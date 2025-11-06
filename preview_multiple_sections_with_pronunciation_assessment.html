@@ -154,8 +154,8 @@ sentences.forEach((sentence, idx) => {
     <div class="entry-body">
       <audio controls src="${base}/${idx + 1}.mp3"></audio>
       <div id="syncStatus_${idx}" style="font-size:0.9rem;color:#4b5563;margin-bottom:10px"></div>
-      <button class="collapsible">📜 スクリプトを表示</button>
-      <div class="content" style="display:none;"></div>
+      <button class="collapsible script-toggle">📜 スクリプトを表示</button>
+      <div class="content script-content" style="display:none;"></div>
       <div class="evaluation-block listening-block">
         <div class="evaluation-header">
           <h3 class="evaluation-title">リスニング評価</h3>
@@ -173,7 +173,10 @@ sentences.forEach((sentence, idx) => {
         <div class="feedback" id="trans_feedback_${idx}"></div>
       </div>
       <h3>発音評価</h3>
-      <textarea id="refText_${idx}" class="ref-text">${sentence}</textarea>
+      <button class="collapsible ref-toggle">📝 お手本を表示</button>
+      <div class="content ref-content" style="display:none;">
+        <textarea id="refText_${idx}" class="ref-text">${sentence}</textarea>
+      </div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">
         <button id="recStart_${idx}" title="録音開始">録音</button>
         <button id="recStop_${idx}" title="録音停止" disabled>停止</button>
@@ -194,8 +197,10 @@ sentences.forEach((sentence, idx) => {
 function setupBlock(idx, sentence) {
   const cardRoot = container.children[idx];
   const entryEl = cardRoot?.querySelector(".entry");
-  const collapsibleBtn = cardRoot?.querySelector(".collapsible");
-  const contentEl = cardRoot?.querySelector(".content");
+  const scriptToggleBtn = cardRoot?.querySelector(".script-toggle");
+  const scriptContentEl = cardRoot?.querySelector(".script-content");
+  const refToggleBtn = cardRoot?.querySelector(".ref-toggle");
+  const refContentEl = cardRoot?.querySelector(".ref-content");
 
   const noteInput = document.getElementById(`note_${idx}_input`);
   const transInput = document.getElementById(`trans_${idx}_input`);
@@ -223,7 +228,7 @@ function setupBlock(idx, sentence) {
     });
   }
 
-  if (contentEl) contentEl.textContent = sentence;
+  if (scriptContentEl) scriptContentEl.textContent = sentence;
   noteInput.value = localStorage.getItem(`note_${idx}`) || "";
   transInput.value = localStorage.getItem(`trans_${idx}`) || "";
   try {
@@ -344,11 +349,18 @@ function setupBlock(idx, sentence) {
       updateEntrySummary(sectionIdx);
     }
   }
-  if (collapsibleBtn && contentEl) {
-    collapsibleBtn.addEventListener("click", () => {
-      const isVisible = contentEl.style.display === "block";
-      contentEl.style.display = isVisible ? "none" : "block";
-      collapsibleBtn.textContent = isVisible ? "📜 スクリプトを表示" : "📜 スクリプトを閉じる";
+  if (scriptToggleBtn && scriptContentEl) {
+    scriptToggleBtn.addEventListener("click", () => {
+      const isVisible = scriptContentEl.style.display === "block";
+      scriptContentEl.style.display = isVisible ? "none" : "block";
+      scriptToggleBtn.textContent = isVisible ? "📜 スクリプトを表示" : "📜 スクリプトを閉じる";
+    });
+  }
+  if (refToggleBtn && refContentEl) {
+    refToggleBtn.addEventListener("click", () => {
+      const isVisible = refContentEl.style.display === "block";
+      refContentEl.style.display = isVisible ? "none" : "block";
+      refToggleBtn.textContent = isVisible ? "📝 お手本を表示" : "📝 お手本を閉じる";
     });
   }
   // 発音評価: 録音 or ファイル選択 -> S3アップロード -> Azure 評価 -> サイドカー保存 -> 表示
