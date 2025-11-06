@@ -152,8 +152,8 @@ sentences.forEach((sentence, idx) => {
     <div class="entry-body">
       <audio controls src="${base}/${idx + 1}.mp3"></audio>
       <div id="syncStatus_${idx}" style="font-size:0.9rem;color:#4b5563;margin-bottom:10px"></div>
-      <button class="collapsible script-toggle">📜 スクリプトを表示</button>
-      <div class="content script-content" style="display:none;"></div>
+  <button class="collapsible script-toggle primary-script">📜 スクリプトを表示</button>
+  <div class="content script-content primary-script-content" style="display:none;"></div>
       <div class="evaluation-block listening-block">
         <div class="evaluation-header">
           <h3 class="evaluation-title">リスニング評価</h3>
@@ -171,6 +171,8 @@ sentences.forEach((sentence, idx) => {
         <div class="feedback" id="trans_feedback_${idx}"></div>
       </div>
   <h3>発音評価</h3>
+      <button class="collapsible script-toggle secondary-script">📜 スクリプトを表示</button>
+      <div class="content script-content secondary-script-content" style="display:none;"></div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">
         <button id="recStart_${idx}" title="録音開始">録音</button>
         <button id="recStop_${idx}" title="録音停止" disabled>停止</button>
@@ -191,8 +193,10 @@ sentences.forEach((sentence, idx) => {
 function setupBlock(idx, sentence) {
   const cardRoot = container.children[idx];
   const entryEl = cardRoot?.querySelector(".entry");
-  const scriptToggleBtn = cardRoot?.querySelector(".script-toggle");
-  const scriptContentEl = cardRoot?.querySelector(".script-content");
+  const primaryScriptBtn = cardRoot?.querySelector(".primary-script");
+  const primaryScriptContent = cardRoot?.querySelector(".primary-script-content");
+  const secondaryScriptBtn = cardRoot?.querySelector(".secondary-script");
+  const secondaryScriptContent = cardRoot?.querySelector(".secondary-script-content");
 
   const noteInput = document.getElementById(`note_${idx}_input`);
   const transInput = document.getElementById(`trans_${idx}_input`);
@@ -220,7 +224,8 @@ function setupBlock(idx, sentence) {
     });
   }
 
-  if (scriptContentEl) scriptContentEl.textContent = sentence;
+  if (primaryScriptContent) primaryScriptContent.textContent = sentence;
+  if (secondaryScriptContent) secondaryScriptContent.textContent = sentence;
   noteInput.value = localStorage.getItem(`note_${idx}`) || "";
   transInput.value = localStorage.getItem(`trans_${idx}`) || "";
   try {
@@ -341,11 +346,18 @@ function setupBlock(idx, sentence) {
       updateEntrySummary(sectionIdx);
     }
   }
-  if (scriptToggleBtn && scriptContentEl) {
-    scriptToggleBtn.addEventListener("click", () => {
-      const isVisible = scriptContentEl.style.display === "block";
-      scriptContentEl.style.display = isVisible ? "none" : "block";
-      scriptToggleBtn.textContent = isVisible ? "📜 スクリプトを表示" : "📜 スクリプトを閉じる";
+  if (primaryScriptBtn && primaryScriptContent) {
+    primaryScriptBtn.addEventListener("click", () => {
+      const isVisible = primaryScriptContent.style.display === "block";
+      primaryScriptContent.style.display = isVisible ? "none" : "block";
+      primaryScriptBtn.textContent = isVisible ? "📜 スクリプトを表示" : "📜 スクリプトを閉じる";
+    });
+  }
+  if (secondaryScriptBtn && secondaryScriptContent) {
+    secondaryScriptBtn.addEventListener("click", () => {
+      const isVisible = secondaryScriptContent.style.display === "block";
+      secondaryScriptContent.style.display = isVisible ? "none" : "block";
+      secondaryScriptBtn.textContent = isVisible ? "📜 スクリプトを表示" : "📜 スクリプトを閉じる";
     });
   }
   // 発音評価: 録音 or ファイル選択 -> S3アップロード -> Azure 評価 -> サイドカー保存 -> 表示
