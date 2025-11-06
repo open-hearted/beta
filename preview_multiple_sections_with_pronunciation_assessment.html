@@ -35,8 +35,13 @@
     .status { margin-top: 0.5rem; font-size: 1rem; color: #333; }
     .collapsible { background-color: #eee; cursor: pointer; padding: 0.5rem 1rem; border: none; font-size: 0.95rem; margin-top: 0.8rem; width: 100%; border-radius: 6px; text-align: left; }
     .collapsible:hover { background-color: #ddd; }
-    .content { display: none; background-color: #fafafa; padding: 1rem; border: 1px solid #ccc; margin-top: 0.5rem; border-radius: 6px; white-space: pre-wrap; }
-    .feedback { background: #fff; border-left: 4px solid #4caf50; padding: 0.5rem; margin-top: 0.5rem; font-size: 0.95rem; }
+  .content { display: none; background-color: #fafafa; padding: 1rem; border: 1px solid #ccc; margin-top: 0.5rem; border-radius: 6px; white-space: pre-wrap; }
+  .feedback { background: #fff; border-left: 4px solid #4caf50; padding: 0.5rem; margin-top: 0.5rem; font-size: 0.95rem; }
+  .pending-preview { display: none; margin-top: 0.75rem; padding: 0.75rem; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; }
+  .pending-preview audio { width: 100%; }
+  .pending-preview-controls { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-top: 0.5rem; font-size: 0.95rem; color: #4b5563; }
+  .pending-preview-controls button { background-color: #ef4444; }
+  .pending-preview-controls button:hover { background-color: #dc2626; }
   .evaluation-block { background: #f9fafb; border: 1px solid #d1d5db; border-radius: 10px; padding: 1rem; margin-top: 1rem; }
   .evaluation-header { display: flex; align-items: center; gap: 0.75rem; margin: 0 0 0.5rem 0; }
   .evaluation-title { margin: 0; font-size: 1.1rem; color: #374151; }
@@ -180,6 +185,7 @@ sentences.forEach((sentence, idx) => {
         <button id="submitBtn_${idx}" disabled style="margin-left:auto;">発音評価を実行</button>
       </div>
       <pre id="result_${idx}" style="margin:0;padding:0;"></pre>
+      <div id="pendingPreview_${idx}" class="pending-preview"></div>
       <div id="recList_${idx}" style="margin-top:10px;"></div>
       <div id="scoreBlock_${idx}"></div>
     </div>
@@ -201,6 +207,9 @@ function setupBlock(idx, sentence) {
   const transInput = document.getElementById(`trans_${idx}_input`);
   const feedbackEl = document.getElementById(`feedback_${idx}`);
   const transFeedbackEl = document.getElementById(`trans_feedback_${idx}`);
+  const submitBtn = document.getElementById(`submitBtn_${idx}`);
+  const pendingPreview = document.getElementById(`pendingPreview_${idx}`);
+  let pendingPreviewUrl = null;
   const recToggleBtn = document.getElementById(`recToggle_${idx}`);
 
   if (entryEl) entryEl.dataset.dirty = '0';
@@ -360,6 +369,55 @@ function setupBlock(idx, sentence) {
       secondaryScriptBtn.textContent = isVisible ? "📜 スクリプトを表示" : "📜 スクリプトを閉じる";
     });
   }
+
+  let lastRecordedFile = null;
+  const resultBox = document.getElementById(`result_${idx}`);
+  const recStatus = document.getElementById(`recStatus_${idx}`);
+
+  function disposePendingPreview() {
+    if (pendingPreview) {
+      pendingPreview.innerHTML = '';
+      pendingPreview.style.display = 'none';
+    }
+    if (pendingPreviewUrl) {
+      URL.revokeObjectURL(pendingPreviewUrl);
+      pendingPreviewUrl = null;
+    }
+  }
+
+  function deletePendingRecording() {
+    disposePendingPreview();
+    lastRecordedFile = null;
+    if (submitBtn) submitBtn.disabled = true;
+    if (recStatus) recStatus.textContent = '録音は送信されません';
+    resultBox.textContent = '録音を削除しました。';
+    if (recToggleBtn) {
+      recToggleBtn.dataset.state = 'idle';
+      recToggleBtn.textContent = '録音';
+      recToggleBtn.title = '録音開始';
+    }
+    updateEntrySummary(idx);
+  }
+
+  function showPendingPreview(file, url) {
+    if (!pendingPreview) {
+      URL.revokeObjectURL(url);
+      return;
+    }
+    disposePendingPreview();
+    const sizeLabel = fmtBytes(file.size) || 'サイズ不明';
+    pendingPreview.innerHTML = `
+      <audio controls src="${url}"></audio>
+      <div class="pending-preview-controls">
+        <span>${sizeLabel} ／ 録音内容を確認できます。</span>
+        <button type="button" class="pending-preview-delete">削除</button>
+      </div>
+    `;
+    pendingPreview.style.display = 'block';
+    pendingPreviewUrl = url;
+    const deleteBtn = pendingPreview.querySelector('.pending-preview-delete');
+    if (deleteBtn) deleteBtn.addEventListener('click', deletePendingRecording);
+  }
   // 発音評価: 録音 or ファイル選択 -> S3アップロード -> Azure 評価 -> サイドカー保存 -> 表示
   const API_UPLOAD = '/api/upload';
   const API_ASSESS = '/api/azure-assess';
@@ -429,9 +487,6 @@ function setupBlock(idx, sentence) {
   }
 
   // no file input: only recorded files are supported
-  let lastRecordedFile = null;
-  const resultBox = document.getElementById(`result_${idx}`);
-  const recStatus = document.getElementById(`recStatus_${idx}`);
 
   // recorder per-section (uses AudioWorklet if available)
   let _recorder = null; // storing state per section in closure
@@ -439,6 +494,10 @@ function setupBlock(idx, sentence) {
     if (recToggleBtn) {
       recToggleBtn.disabled = true;
     }
+    if (submitBtn) submitBtn.disabled = true;
+    disposePendingPreview();
+    lastRecordedFile = null;
+    if (recStatus) recStatus.textContent = '';
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const ac = new (window.AudioContext||window.webkitAudioContext)({ sampleRate: 16000 });
@@ -450,9 +509,7 @@ function setupBlock(idx, sentence) {
       const chunks = [];
       node.port.onmessage = ev => chunks.push(new Float32Array(ev.data));
       src.connect(node); node.connect(mute).connect(ac.destination);
-      _recorder = { ac, stream, node, mute, chunks, startedAt: performance.now(), timerId: null };
-      // disable submit until recording is finished
-      try { document.getElementById(`submitBtn_${idx}`).disabled = true; } catch(e){}
+  _recorder = { ac, stream, node, mute, chunks, startedAt: performance.now(), timerId: null };
       // start timer display
       try{
         const timerEl = document.getElementById(`recTimer_${idx}`);
@@ -504,11 +561,13 @@ function setupBlock(idx, sentence) {
       // attach blob to file input (so UI still uses fileInput.files if needed)
       const file = new File([blob], `rec_${Date.now()}.wav`, { type: 'audio/wav' });
       lastRecordedFile = file;
+  const previewUrl = URL.createObjectURL(blob);
+  showPendingPreview(file, previewUrl);
       resultBox.textContent = '録音完了: ' + (file.size? fmtBytes(file.size) : '不明');
       if (recStatus) recStatus.textContent = `録音完了 (${fmtBytes(file.size)})`;
       // stop timer and enable submit
       try{ if (recorderRef.timerId) clearInterval(recorderRef.timerId); const tEl = document.getElementById(`recTimer_${idx}`); if (tEl) tEl.textContent = ''; }catch(e){}
-      try { document.getElementById(`submitBtn_${idx}`).disabled = false; } catch(e){}
+  if (submitBtn) submitBtn.disabled = false;
     } catch(e){
       resultBox.textContent = '録音停止エラー: '+e.message;
     } finally {
@@ -542,7 +601,6 @@ function setupBlock(idx, sentence) {
   }
   // move the submit button into the same row as the recording controls for better UX
   try{
-    const submitBtn = document.getElementById(`submitBtn_${idx}`);
     if (recToggleBtn && submitBtn && recToggleBtn.parentNode && !recToggleBtn.parentNode.contains(submitBtn)){
       submitBtn.style.marginLeft = '8px';
       recToggleBtn.parentNode.appendChild(submitBtn);
@@ -556,7 +614,7 @@ function setupBlock(idx, sentence) {
 
   // upload blob/file to /api/upload with prefix per section
   async function uploadFileAndAssess(fileBlob){
-  resultBox.textContent = 'アップロード中...';
+    resultBox.textContent = 'アップロード中...';
     const fd = new FormData();
     fd.append('file', new File([fileBlob], fileBlob.name || `rec_${Date.now()}.wav`, { type: fileBlob.type || 'audio/wav' }));
     const prefix = PAGE_PREFIX + `section_${idx}/`;
@@ -564,7 +622,7 @@ function setupBlock(idx, sentence) {
     let uploadResp;
     try {
       // disable submit during upload/assess
-      try { document.getElementById(`submitBtn_${idx}`).disabled = true; } catch(e){}
+      if (submitBtn) submitBtn.disabled = true;
       uploadResp = await fetch(API_UPLOAD, { method:'POST', body: fd });
       if (!uploadResp.ok) {
         let detail = '';
@@ -589,24 +647,31 @@ function setupBlock(idx, sentence) {
       try { addRecordingCard(idx, { key: s3Key, url: audioUrl, fileName: fileBlob.name || ('rec_'+Date.now()+'.wav'), size: fileBlob.size || 0 }); } catch(e){ console.warn('addRecordingCard failed', e); }
       resultBox.textContent = 'アップロード完了。Azure評価へ…';
       // call azure-assess
-  const referenceText = sentence;
-  const assessResp = await fetch(API_ASSESS, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ audioUrl, referenceText, language: 'en-US' }) });
+    const referenceText = sentence;
+    const assessResp = await fetch(API_ASSESS, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ audioUrl, referenceText, language: 'en-US' }) });
       if (!assessResp.ok) { const t = await assessResp.text(); throw new Error('azure-assess failed: '+assessResp.status+' '+t); }
       const assessJson = await assessResp.json();
       // save assessment sidecar: key should be s3Key
-  const saveResp = await fetch(API_ASSESS_SAVE, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ key: s3Key, result: assessJson, referenceText }) });
+    const saveResp = await fetch(API_ASSESS_SAVE, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ key: s3Key, result: assessJson, referenceText }) });
       if (!saveResp.ok) { const t = await saveResp.text(); throw new Error('save assessment failed: '+saveResp.status+' '+t); }
       resultBox.textContent = '評価完了・保存済み';
       // render results
-  // update card with assessment marker and also render main area
-  try { markCardAssessed(idx, s3Key, assessJson); } catch(e){}
-  displayResults(JSON.stringify(assessJson.result || assessJson?.result || assessJson), idx);
-    } catch(e){ resultBox.textContent = 'エラー: '+e.message; }
+    // update card with assessment marker and also render main area
+    try { markCardAssessed(idx, s3Key, assessJson); } catch(e){}
+    displayResults(JSON.stringify(assessJson.result || assessJson?.result || assessJson), idx);
+      disposePendingPreview();
+      lastRecordedFile = null;
+      if (recStatus) recStatus.textContent = 'アップロード済み (録音一覧を確認してください)';
+    } catch(e){
+      resultBox.textContent = 'エラー: '+e.message;
+    } finally {
+      if (submitBtn) submitBtn.disabled = !lastRecordedFile;
+    }
     updateEntrySummary(idx);
   }
 
   // submit handler (file input must contain .wav or recording filled into fileInput)
-  document.getElementById(`submitBtn_${idx}`).onclick = async () => {
+  if (submitBtn) submitBtn.onclick = async () => {
     resultBox.textContent = '';
     if (!lastRecordedFile) { resultBox.textContent = '録音を行ってから「発音評価を実行」を押してください。'; return; }
     await uploadFileAndAssess(lastRecordedFile);
