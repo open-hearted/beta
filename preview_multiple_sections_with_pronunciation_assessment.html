@@ -19,7 +19,8 @@
     .entry summary::-webkit-details-marker { display: none; }
     .entry.expanded summary,
     .entry[open] summary { border-bottom: 1px solid #e5e7eb; background: #eef2ff; }
-    .entry-title { flex: 1 1 160px; font-size: 1.05rem; }
+  .entry-heading { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+    .entry-title { flex: 0 0 auto; font-size: 1.05rem; }
     .entry-snippet { flex: 2 1 240px; font-size: 0.95rem; color: #6b7280; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .entry-status { flex: 0 0 auto; font-size: 0.9rem; color: #374151; margin-left: 0; }
     .entry-body { padding: 1.25rem; background: white; }
@@ -152,9 +153,11 @@ sentences.forEach((sentence, idx) => {
   card.innerHTML = `
   <details class="entry" data-section="${idx}">
     <summary>
-  <span class="entry-title">${idx + 1}/${totalSections}</span>
-  <span class="entry-snippet" id="summarySnippet_${idx}" style="display:none;"></span>
-  <span class="entry-status" id="status${idx}">聞き取り⬜　和訳⬜　録音⬜</span>
+      <span class="entry-heading">
+        <span class="entry-title">${idx + 1}/${totalSections}</span>
+        <span class="entry-status" id="status${idx}">聞き取り⬜　和訳⬜　録音⬜</span>
+      </span>
+      <span class="entry-snippet" id="summarySnippet_${idx}" style="display:none;"></span>
     </summary>
     <div class="entry-body">
       <audio controls src="${base}/${idx + 1}.mp3"></audio>
