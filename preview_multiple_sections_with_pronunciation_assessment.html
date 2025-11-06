@@ -40,7 +40,7 @@
   .pending-preview { display: none; margin-top: 0.75rem; padding: 0.75rem; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; }
   .pending-preview audio { flex: 1 1 auto; width: auto; min-width: 180px; }
   .pending-preview-row { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
-  .pending-preview-note { margin-top: 0.5rem; font-size: 0.95rem; color: #4b5563; }
+  .pending-preview-header { font-weight: 600; font-size: 0.95rem; color: #1f2937; margin-bottom: 0.5rem; }
   .pending-preview button { background-color: #ef4444; }
   .pending-preview button:hover { background-color: #dc2626; }
   .evaluation-block { background: #f9fafb; border: 1px solid #d1d5db; border-radius: 10px; padding: 1rem; margin-top: 1rem; }
@@ -640,6 +640,7 @@ function setupBlock(idx, sentence) {
     }
     disposePendingPreview();
     pendingPreview.innerHTML = `
+      <div class="pending-preview-header">録音プレビュー</div>
       <div class="pending-preview-row">
         <audio controls src="${url}"></audio>
         <button type="button" class="pending-preview-delete">削除</button>
