@@ -174,8 +174,7 @@ sentences.forEach((sentence, idx) => {
       <button class="collapsible script-toggle secondary-script">📜 スクリプトを表示</button>
       <div class="content script-content secondary-script-content" style="display:none;"></div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">
-        <button id="recStart_${idx}" title="録音開始">録音</button>
-        <button id="recStop_${idx}" title="録音停止" disabled>停止</button>
+        <button id="recToggle_${idx}" title="録音開始">録音</button>
         <span id="recStatus_${idx}" style="margin-left:8px;color:#4b5563;font-size:0.95rem;"></span>
         <span id="recTimer_${idx}" style="margin-left:8px;color:#b91c1c;font-weight:600;"></span>
         <button id="submitBtn_${idx}" disabled style="margin-left:auto;">発音評価を実行</button>
@@ -202,6 +201,7 @@ function setupBlock(idx, sentence) {
   const transInput = document.getElementById(`trans_${idx}_input`);
   const feedbackEl = document.getElementById(`feedback_${idx}`);
   const transFeedbackEl = document.getElementById(`trans_feedback_${idx}`);
+  const recToggleBtn = document.getElementById(`recToggle_${idx}`);
 
   if (entryEl) entryEl.dataset.dirty = '0';
 
@@ -436,6 +436,9 @@ function setupBlock(idx, sentence) {
   // recorder per-section (uses AudioWorklet if available)
   let _recorder = null; // storing state per section in closure
   async function startRecordingForSection(){
+    if (recToggleBtn) {
+      recToggleBtn.disabled = true;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const ac = new (window.AudioContext||window.webkitAudioContext)({ sampleRate: 16000 });
@@ -461,24 +464,39 @@ function setupBlock(idx, sentence) {
           if (timerEl) timerEl.textContent = `${mm}:${ss}`;
         }, 250);
       }catch(e){}
-      document.getElementById(`recStart_${idx}`).disabled = true;
-      document.getElementById(`recStop_${idx}`).disabled = false;
+      if (recToggleBtn) {
+        recToggleBtn.dataset.state = 'recording';
+        recToggleBtn.textContent = '停止';
+        recToggleBtn.title = '録音停止';
+      }
       resultBox.textContent = '録音中...';
-    } catch(e){ resultBox.textContent = '録音開始失敗: '+e.message; }
+    } catch(e){
+      resultBox.textContent = '録音開始失敗: '+e.message;
+      _recorder = null;
+      if (recToggleBtn) {
+        recToggleBtn.dataset.state = 'idle';
+        recToggleBtn.textContent = '録音';
+        recToggleBtn.title = '録音開始';
+      }
+    } finally {
+      if (recToggleBtn) recToggleBtn.disabled = false;
+    }
   }
 
   async function stopRecordingForSection(){
     if (!_recorder) return;
+    const recorderRef = _recorder;
+    if (recToggleBtn) recToggleBtn.disabled = true;
     try {
-      const { ac, stream, node, mute, chunks, startedAt } = _recorder;
+      const { stream, node, mute, chunks } = recorderRef;
       try { node && node.disconnect(); } catch {}
       try { mute && mute.disconnect(); } catch {}
       try { stream && stream.getTracks().forEach(t=>t.stop()); } catch {}
       const total = chunks.reduce((s,a)=> s + a.length, 0);
       const buf = new Float32Array(total);
       let off = 0; for (const a of chunks){ buf.set(a, off); off += a.length; }
-      // resample if necessary (ac.sampleRate -> 16000 assumed)
-      const effective = ac.sampleRate || 16000;
+      // resample if necessary (recorderRef.ac.sampleRate -> 16000 assumed)
+      const effective = recorderRef.ac.sampleRate || 16000;
       let out = buf;
       if (Math.abs(effective - 16000) > 1) out = resampleLinear(buf, effective, 16000);
       const wav = encodeWavFromFloat32(out, 16000);
@@ -489,24 +507,45 @@ function setupBlock(idx, sentence) {
       resultBox.textContent = '録音完了: ' + (file.size? fmtBytes(file.size) : '不明');
       if (recStatus) recStatus.textContent = `録音完了 (${fmtBytes(file.size)})`;
       // stop timer and enable submit
-      try{ if (_recorder.timerId) clearInterval(_recorder.timerId); const tEl = document.getElementById(`recTimer_${idx}`); if (tEl) tEl.textContent = ''; }catch(e){}
+      try{ if (recorderRef.timerId) clearInterval(recorderRef.timerId); const tEl = document.getElementById(`recTimer_${idx}`); if (tEl) tEl.textContent = ''; }catch(e){}
       try { document.getElementById(`submitBtn_${idx}`).disabled = false; } catch(e){}
-    } catch(e){ resultBox.textContent = '録音停止エラー: '+e.message; }
-    try { await _recorder.ac.close(); } catch {}
-    _recorder = null;
-    document.getElementById(`recStart_${idx}`).disabled = false;
-    document.getElementById(`recStop_${idx}`).disabled = true;
+    } catch(e){
+      resultBox.textContent = '録音停止エラー: '+e.message;
+    } finally {
+      try { await recorderRef.ac.close(); } catch {}
+      _recorder = null;
+      if (recToggleBtn) {
+        recToggleBtn.disabled = false;
+        recToggleBtn.dataset.state = 'idle';
+        recToggleBtn.textContent = '録音';
+        recToggleBtn.title = '録音開始';
+      }
+    }
   }
 
-  document.getElementById(`recStart_${idx}`).addEventListener('click', startRecordingForSection);
-  document.getElementById(`recStop_${idx}`).addEventListener('click', stopRecordingForSection);
+  if (recToggleBtn) {
+    let toggleBusy = false;
+    recToggleBtn.dataset.state = 'idle';
+    recToggleBtn.addEventListener('click', async () => {
+      if (toggleBusy) return;
+      toggleBusy = true;
+      try {
+        if (_recorder) {
+          await stopRecordingForSection();
+        } else {
+          await startRecordingForSection();
+        }
+      } finally {
+        toggleBusy = false;
+      }
+    });
+  }
   // move the submit button into the same row as the recording controls for better UX
   try{
-    const recStartEl = document.getElementById(`recStart_${idx}`);
     const submitBtn = document.getElementById(`submitBtn_${idx}`);
-    if (recStartEl && submitBtn && recStartEl.parentNode && !recStartEl.parentNode.contains(submitBtn)){
+    if (recToggleBtn && submitBtn && recToggleBtn.parentNode && !recToggleBtn.parentNode.contains(submitBtn)){
       submitBtn.style.marginLeft = '8px';
-      recStartEl.parentNode.appendChild(submitBtn);
+      recToggleBtn.parentNode.appendChild(submitBtn);
     }
   }catch(e){}
 
