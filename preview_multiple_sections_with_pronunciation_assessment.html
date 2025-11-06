@@ -831,7 +831,7 @@ function addRecordingCard(sectionIdx, meta){
 
     // right: inline row with audio + controls (donut, audio, buttons on one line)
     const right = document.createElement('div'); right.className = 'right';
-    const inlineRow = document.createElement('div'); inlineRow.style = 'display:flex;align-items:center;gap:12px;';
+    const inlineRow = document.createElement('div'); inlineRow.style = 'display:flex;align-items:center;gap:8px;';
     // audio element (shortened to fit)
     let a = null;
     if (meta.url){
@@ -841,20 +841,21 @@ function addRecordingCard(sectionIdx, meta){
     } else {
       a = document.createElement('div'); a.textContent = '（音声なし）'; a.style.color = '#666';
     }
+    const audioWrap = document.createElement('div');
+    audioWrap.style = 'display:flex;align-items:center;gap:4px;flex:1 1 auto;min-width:0;';
+    audioWrap.appendChild(a);
+    const timestampEl = document.createElement('span');
+    timestampEl.className = 'rec-timestamp';
+    timestampEl.style = 'font-size:0.85rem;color:#6b7280;white-space:nowrap;flex:0 0 auto;';
+    audioWrap.appendChild(timestampEl);
   const controls = document.createElement('div'); controls.style = 'display:flex;gap:8px;align-items:center;flex:0 0 auto;';
     const delBtn = document.createElement('button'); delBtn.textContent = '削除'; delBtn.style.background = '#e53e3e';
     controls.appendChild(delBtn);
-    inlineRow.appendChild(a); inlineRow.appendChild(controls);
+    inlineRow.appendChild(audioWrap); inlineRow.appendChild(controls);
     right.appendChild(inlineRow);
-
-  const timestampEl = document.createElement('div');
-  timestampEl.className = 'rec-timestamp';
-  timestampEl.style = 'font-size:0.85rem;color:#6b7280;margin-top:4px;';
-  right.appendChild(timestampEl);
 
   const summary = document.createElement('div'); summary.className = 'rec-summary'; summary.style = 'margin-top:6px;color:#333;font-size:0.95rem;'; summary.innerHTML = '';
   right.appendChild(summary);
-  right.appendChild(timestampEl);
 
     // word-level table (hidden initially)
     const wordsContainer = document.createElement('div'); wordsContainer.className = 'word-table'; wordsContainer.style.display = 'none';
