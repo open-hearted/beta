@@ -626,7 +626,7 @@ function setupBlock(idx, sentence) {
     lastRecordedFile = null;
     if (submitBtn) submitBtn.disabled = true;
     if (recStatus) recStatus.textContent = '';
-    resultBox.textContent = '録音を削除しました。';
+  resultBox.textContent = '録音プレビューを削除しました。';
     if (recToggleBtn) {
       recToggleBtn.dataset.state = 'idle';
       recToggleBtn.textContent = '🎙️ 録音開始';
@@ -645,7 +645,7 @@ function setupBlock(idx, sentence) {
       <div class="pending-preview-header">録音プレビュー</div>
       <div class="pending-preview-row">
         <audio controls src="${url}"></audio>
-        <button type="button" class="pending-preview-delete">削除</button>
+        <button type="button" class="pending-preview-delete">プレビュー削除</button>
       </div>
     `;
     pendingPreview.style.display = 'block';
@@ -1078,7 +1078,7 @@ function addRecordingCard(sectionIdx, meta){
     timestampEl.style = 'font-size:0.85rem;color:#6b7280;white-space:nowrap;flex:0 0 auto;';
     audioWrap.appendChild(timestampEl);
   const controls = document.createElement('div'); controls.style = 'display:flex;gap:8px;align-items:center;flex:0 0 auto;';
-    const delBtn = document.createElement('button'); delBtn.textContent = '削除'; delBtn.style.background = '#e53e3e';
+  const delBtn = document.createElement('button'); delBtn.textContent = '録音削除'; delBtn.style.background = '#e53e3e';
     controls.appendChild(delBtn);
     inlineRow.appendChild(audioWrap); inlineRow.appendChild(controls);
     right.appendChild(inlineRow);
@@ -1094,9 +1094,9 @@ function addRecordingCard(sectionIdx, meta){
     // wire up buttons
     delBtn.onclick = async ()=>{
       if (!meta.key) { wrapper.remove(); updateEntrySummary(sectionIdx); return; }
-      if (!confirm('この録音を削除しますか？')) return;
+    if (!confirm('この録音を削除しますか？')) return;
   const resp = await authedFetch('/api/upload?key=' + encodeURIComponent(meta.key), { method: 'DELETE' });
-      if (resp.ok) { wrapper.remove(); updateEntrySummary(sectionIdx); } else { alert('削除に失敗しました'); }
+    if (resp.ok) { wrapper.remove(); updateEntrySummary(sectionIdx); } else { alert('録音削除に失敗しました'); }
     };
     toggleWordsBtn.onclick = ()=>{
       try{
