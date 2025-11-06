@@ -53,8 +53,6 @@
   .rec-card canvas { background:transparent; }
   .word-table { margin-top:8px; font-size:0.92rem; border-top:1px dashed #eee; padding-top:8px; }
     @media (max-width: 768px) { body { padding: 0.5rem; } .card { padding: 1rem; } h1 { font-size: 1.5rem; } button { padding: 0.6rem 1rem; font-size: 0.9rem; } }
-    /* reference text styling: allow wrapping and sufficient height to avoid clipping */
-    .ref-text { width:100%; padding:0.65rem; margin-top:0.5rem; font-size:1rem; border:2px solid #ddd; border-radius:6px; box-sizing:border-box; min-height:72px; resize:vertical; }
   </style>
 </head>
 <body>
@@ -172,8 +170,7 @@ sentences.forEach((sentence, idx) => {
         <textarea id="trans_${idx}_input" placeholder="日本語訳を入力…"></textarea>
         <div class="feedback" id="trans_feedback_${idx}"></div>
       </div>
-      <h3>発音評価</h3>
-      <textarea id="refText_${idx}" class="ref-text">${sentence}</textarea>
+  <h3>発音評価</h3>
       <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">
         <button id="recStart_${idx}" title="録音開始">録音</button>
         <button id="recStop_${idx}" title="録音停止" disabled>停止</button>
@@ -422,7 +419,6 @@ function setupBlock(idx, sentence) {
   // no file input: only recorded files are supported
   let lastRecordedFile = null;
   const resultBox = document.getElementById(`result_${idx}`);
-  const refInput = document.getElementById(`refText_${idx}`);
   const recStatus = document.getElementById(`recStatus_${idx}`);
 
   // recorder per-section (uses AudioWorklet if available)
@@ -527,11 +523,12 @@ function setupBlock(idx, sentence) {
       try { addRecordingCard(idx, { key: s3Key, url: audioUrl, fileName: fileBlob.name || ('rec_'+Date.now()+'.wav'), size: fileBlob.size || 0 }); } catch(e){ console.warn('addRecordingCard failed', e); }
       resultBox.textContent = 'アップロード完了。Azure評価へ…';
       // call azure-assess
-      const assessResp = await fetch(API_ASSESS, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ audioUrl, referenceText: refInput.value || sentence, language: 'en-US' }) });
+  const referenceText = sentence;
+  const assessResp = await fetch(API_ASSESS, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ audioUrl, referenceText, language: 'en-US' }) });
       if (!assessResp.ok) { const t = await assessResp.text(); throw new Error('azure-assess failed: '+assessResp.status+' '+t); }
       const assessJson = await assessResp.json();
       // save assessment sidecar: key should be s3Key
-      const saveResp = await fetch(API_ASSESS_SAVE, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ key: s3Key, result: assessJson, referenceText: refInput.value || sentence }) });
+  const saveResp = await fetch(API_ASSESS_SAVE, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ key: s3Key, result: assessJson, referenceText }) });
       if (!saveResp.ok) { const t = await saveResp.text(); throw new Error('save assessment failed: '+saveResp.status+' '+t); }
       resultBox.textContent = '評価完了・保存済み';
       // render results
