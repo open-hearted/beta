@@ -119,28 +119,32 @@ function updateEntrySummary(idx) {
   const syncText = document.getElementById(`syncStatus_${idx}`)?.textContent?.trim() || "";
   const isDirty = entryEl?.dataset?.dirty === '1';
 
-  const parts = [];
-  if (isDirty) parts.push("✏️ 未保存");
-  if (noteVal) parts.push("📝 メモ");
-  if (transVal) parts.push("🌐 訳文");
-  if (listeningFeedback) parts.push("👂 評価");
-  if (translationFeedback) parts.push("🈶 評価");
-  if (recCount) parts.push(`🎤 ${recCount}件`);
-  if (/保存中/.test(syncText)) parts.push("☁ 保存中");
-  else if (/保存済/.test(syncText) || /読み込み/.test(syncText)) parts.push("☁ 同期済");
-  else if (/失敗/.test(syncText)) parts.push("⚠️ 要確認");
-  else if (/ありません/.test(syncText)) parts.push("☁ 未同期");
-
-  if (!parts.length) parts.push("⬜ 入力なし");
-  if (statusEl) statusEl.textContent = parts.join(" ・ ");
+  const listeningDone = Boolean(noteVal || listeningFeedback);
+  const translationDone = Boolean(transVal || translationFeedback);
+  const recordingDone = recCount > 0;
+  if (statusEl) {
+    const statuses = [
+      `聞き取り${listeningDone ? '✅' : '⬜'}`,
+      `翻訳${translationDone ? '✅' : '⬜'}`,
+      `録音${recordingDone ? '✅' : '⬜'}`
+    ];
+    statusEl.textContent = statuses.join('　');
+    const extras = [];
+    if (isDirty) extras.push('未保存の変更あり');
+    if (/保存中/.test(syncText)) extras.push('保存中');
+    else if (/保存済/.test(syncText) || /読み込み/.test(syncText)) extras.push('サーバーと同期済み');
+    else if (/失敗/.test(syncText)) extras.push('保存に失敗');
+    else if (/ありません/.test(syncText)) extras.push('サーバーデータなし');
+    statusEl.title = extras.join(' / ');
+  }
 
   if (snippetEl) {
-    const source = noteVal || transVal;
+    const source = transVal;
     if (source) {
       const normalized = source.replace(/\s+/g, " ").trim();
       snippetEl.textContent = normalized.length > 60 ? `${normalized.slice(0, 60)}…` : normalized;
     } else {
-      snippetEl.textContent = "メモなし";
+      snippetEl.textContent = "翻訳なし";
     }
   }
 }
