@@ -12,17 +12,16 @@
   body { font-family: sans-serif; padding: 1rem; background: #f0f2f5; max-width: none; width: 100%; margin: 0; line-height: 1.6; }
     .card { background: transparent; border: none; padding: 0; margin-bottom: 2rem; box-shadow: none; }
     .entry { border: 1px solid #ddd; border-radius: 12px; background: #fff; overflow: hidden; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05); }
-  .entry summary { list-style: none; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 1rem 1.25rem; background: #f7f8fc; cursor: pointer; font-weight: 600; color: #1f2937; }
+  .entry summary { position: relative; list-style: none; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 1rem 1.25rem; background: #f7f8fc; cursor: pointer; font-weight: 600; color: #1f2937; }
   .entry summary::before { content: '\25B6'; color: #6366f1; font-size: 0.85rem; transition: transform 0.2s ease; }
   .entry.expanded summary::before,
   .entry[open] summary::before { transform: rotate(90deg); }
     .entry summary::-webkit-details-marker { display: none; }
     .entry.expanded summary,
     .entry[open] summary { border-bottom: 1px solid #e5e7eb; background: #eef2ff; }
-  .entry-heading { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-    .entry-title { flex: 0 0 auto; font-size: 1.05rem; }
+  .entry-title { flex: 0 0 auto; font-size: 1.05rem; }
     .entry-snippet { flex: 2 1 240px; font-size: 0.95rem; color: #6b7280; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .entry-status { flex: 0 0 auto; font-size: 0.9rem; color: #374151; margin-left: 0; }
+  .entry-status { position: absolute; left: 50%; transform: translateX(-50%); font-size: 0.9rem; color: #374151; white-space: nowrap; }
     .entry-body { padding: 1.25rem; background: white; }
     h1 { font-size: 2rem; color: #333; margin-bottom: 1rem; text-align: center; }
     h2 { font-size: 1.3rem; color: #555; margin-bottom: 1rem; border-bottom: 2px solid #eee; padding-bottom: 0.5rem; }
@@ -153,10 +152,8 @@ sentences.forEach((sentence, idx) => {
   card.innerHTML = `
   <details class="entry" data-section="${idx}">
     <summary>
-      <span class="entry-heading">
-        <span class="entry-title">${idx + 1}/${totalSections}</span>
-        <span class="entry-status" id="status${idx}">聞き取り⬜　和訳⬜　録音⬜</span>
-      </span>
+      <span class="entry-title">${idx + 1}/${totalSections}</span>
+      <span class="entry-status" id="status${idx}">聞き取り⬜　和訳⬜　録音⬜</span>
       <span class="entry-snippet" id="summarySnippet_${idx}" style="display:none;"></span>
     </summary>
     <div class="entry-body">
@@ -653,7 +650,7 @@ function setupBlock(idx, sentence) {
       // add recording card to the UI for this section
   const nowIso = new Date().toISOString();
   try { addRecordingCard(idx, { key: s3Key, url: audioUrl, fileName: fileBlob.name || ('rec_'+Date.now()+'.wav'), size: fileBlob.size || 0, lastModified: nowIso }); } catch(e){ console.warn('addRecordingCard failed', e); }
-      resultBox.textContent = 'アップロード完了。Azure評価へ…';
+  resultBox.textContent = 'アップロード完了。評価中…';
       // call azure-assess
     const referenceText = sentence;
     const assessResp = await fetch(API_ASSESS, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ audioUrl, referenceText, language: 'en-US' }) });
@@ -695,7 +692,7 @@ async function callChatGPT(userText, refText, targetEl, isTranslation = false, i
     : { system: "以下はリスニング評価です。", template: "学習者: {{student}}\n正解: {{reference}}\n差分を比較し、日本語で簡潔にフィードバックしてください。" };
   const systemPrompt = prompt.system;
   const userPrompt = prompt.template.replace("{{student}}", userText).replace("{{reference}}", refText);
-  targetEl.textContent = "⏳ ChatGPTと比較中…";
+  targetEl.textContent = "⏳ 評価中…";
   try {
     // Call server-side proxy which uses OPENAI_API_KEY from environment
     const body = { model: 'gpt-4', messages: [ { role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt } ] };
