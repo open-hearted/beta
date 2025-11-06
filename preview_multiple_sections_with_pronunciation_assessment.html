@@ -455,7 +455,7 @@ function setupBlock(idx, sentence) {
               fileUrl = infoJson?.item?.presignedUrl || infoJson?.item?.url || fileUrl;
             }
           }
-          addRecordingCard(idx, { key, url: fileUrl, fileName: key.split('/').pop(), size: it.size || 0 });
+          addRecordingCard(idx, { key, url: fileUrl, fileName: key.split('/').pop(), size: it.size || 0, lastModified: it.lastModified || it.LastModified });
           const assessResp = await fetch('/api/assessment?key=' + encodeURIComponent(key + '.assessment.json'));
           if (!assessResp.ok) continue;
           const detail = await assessResp.json().catch(() => null);
@@ -467,7 +467,8 @@ function setupBlock(idx, sentence) {
           else if (it.lastModified) ts = (new Date(it.lastModified)).getTime();
           else ts = Date.now();
           collected.push({ key, result, ts });
-          markCardAssessed(idx, key, result);
+          const savedAt = payload?.savedAt || payload?.result?.savedAt || it.lastModified || it.LastModified;
+          markCardAssessed(idx, key, result, savedAt);
         } catch (error) {
           console.warn('fetchAssessmentsForSection item failed', error);
         }
@@ -645,7 +646,8 @@ function setupBlock(idx, sentence) {
       const audioUrl = upj.presignedUrl || upj.url;
       const s3Key = upj.key;
       // add recording card to the UI for this section
-      try { addRecordingCard(idx, { key: s3Key, url: audioUrl, fileName: fileBlob.name || ('rec_'+Date.now()+'.wav'), size: fileBlob.size || 0 }); } catch(e){ console.warn('addRecordingCard failed', e); }
+  const nowIso = new Date().toISOString();
+  try { addRecordingCard(idx, { key: s3Key, url: audioUrl, fileName: fileBlob.name || ('rec_'+Date.now()+'.wav'), size: fileBlob.size || 0, lastModified: nowIso }); } catch(e){ console.warn('addRecordingCard failed', e); }
       resultBox.textContent = 'アップロード完了。Azure評価へ…';
       // call azure-assess
     const referenceText = sentence;
@@ -658,7 +660,7 @@ function setupBlock(idx, sentence) {
       resultBox.textContent = '評価完了・保存済み';
       // render results
     // update card with assessment marker and also render main area
-    try { markCardAssessed(idx, s3Key, assessJson); } catch(e){}
+  try { markCardAssessed(idx, s3Key, assessJson, nowIso); } catch(e){}
     displayResults(JSON.stringify(assessJson.result || assessJson?.result || assessJson), idx);
       disposePendingPreview();
       lastRecordedFile = null;
@@ -763,6 +765,44 @@ function fmtBytes(b){
   if (b < 1024 * 1024) return (b / 1024).toFixed(1) + 'KB';
   return (b / 1024 / 1024).toFixed(2) + 'MB';
 }
+
+function formatRelativeTime(ts){
+  if (!ts) return '';
+  const date = (ts instanceof Date) ? ts : new Date(ts);
+  if (Number.isNaN(date.getTime())) return '';
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const minutes = Math.floor(diffMs / 60000);
+  const hours = Math.floor(diffMs / 3600000);
+  const days = Math.floor(diffMs / 86400000);
+  if (diffMs < 0) return '未来の録音';
+  if (minutes < 1) return 'たった今';
+  if (minutes < 60) return `${minutes}分前`;
+  if (hours < 24 && now.toDateString() === date.toDateString()) return `${hours}時間前`;
+  if (days === 1) return '1日前';
+  if (days < 7) return `${days}日前`;
+  return date.toLocaleString();
+}
+
+function setCardTimestamp(card, ts){
+  if (!card) return;
+  const date = ts ? new Date(ts) : null;
+  if (!date || Number.isNaN(date.getTime())) return;
+  card.dataset.lastModified = date.toISOString();
+  const tsEl = card.querySelector('.rec-timestamp');
+  if (tsEl) tsEl.textContent = formatRelativeTime(date);
+}
+
+function reorderRecordingList(listEl){
+  if (!listEl) return;
+  const cards = Array.from(listEl.children);
+  cards.sort((a, b) => {
+    const ta = new Date(a.dataset?.lastModified || 0).getTime();
+    const tb = new Date(b.dataset?.lastModified || 0).getTime();
+    return tb - ta;
+  });
+  cards.forEach(card => listEl.appendChild(card));
+}
 // create a small card element in the per-section recList to represent one recording
 function addRecordingCard(sectionIdx, meta){
   try{
@@ -775,6 +815,7 @@ function addRecordingCard(sectionIdx, meta){
     const wrapper = document.createElement('div');
     wrapper.className = 'rec-card';
     if (meta && meta.key) wrapper.setAttribute('data-s3key', meta.key);
+  if (meta && meta.lastModified) wrapper.dataset.lastModified = String(meta.lastModified);
 
     // left: circular score canvas
   const left = document.createElement('div'); left.className = 'left';
@@ -806,8 +847,14 @@ function addRecordingCard(sectionIdx, meta){
     inlineRow.appendChild(a); inlineRow.appendChild(controls);
     right.appendChild(inlineRow);
 
-    const summary = document.createElement('div'); summary.className = 'rec-summary'; summary.style = 'margin-top:6px;color:#333;font-size:0.95rem;'; summary.innerHTML = '';
-    right.appendChild(summary);
+  const timestampEl = document.createElement('div');
+  timestampEl.className = 'rec-timestamp';
+  timestampEl.style = 'font-size:0.85rem;color:#6b7280;margin-top:4px;';
+  right.appendChild(timestampEl);
+
+  const summary = document.createElement('div'); summary.className = 'rec-summary'; summary.style = 'margin-top:6px;color:#333;font-size:0.95rem;'; summary.innerHTML = '';
+  right.appendChild(summary);
+  right.appendChild(timestampEl);
 
     // word-level table (hidden initially)
     const wordsContainer = document.createElement('div'); wordsContainer.className = 'word-table'; wordsContainer.style.display = 'none';
@@ -833,6 +880,15 @@ function addRecordingCard(sectionIdx, meta){
     wrapper.appendChild(left);
     wrapper.appendChild(right);
     listEl.appendChild(wrapper);
+    const tsIso = (() => {
+      if (meta && meta.lastModified) {
+        const dt = new Date(meta.lastModified);
+        if (!Number.isNaN(dt.getTime())) return dt.toISOString();
+      }
+      return new Date().toISOString();
+    })();
+    setCardTimestamp(wrapper, tsIso);
+    reorderRecordingList(listEl);
     updateEntrySummary(sectionIdx);
     // ensure only our donut canvas remains in the card (remove stray canvases)
     canvas.classList.add('rec-donut');
@@ -844,19 +900,19 @@ function addRecordingCard(sectionIdx, meta){
 }
 
 // mark an existing card as assessed and attach short summary (and store full result on element)
-function markCardAssessed(sectionIdx, s3Key, assessJson){
+function markCardAssessed(sectionIdx, s3Key, assessJson, savedAt){
   try{
     const listEl = document.getElementById(`recList_${sectionIdx}`); if (!listEl) return;
     const card = listEl.querySelector(`[data-s3key="${s3Key}"]`);
     if (!card) return;
     const summary = card.querySelector('div');
     // try to pull a numeric score
-    const nb = (assessJson && (assessJson.result || assessJson))?.result || assessJson?.result || assessJson;
+  const nb = (assessJson && (assessJson.result || assessJson))?.result || assessJson?.result || assessJson;
     // find first score value tolerant
     let score = null;
     try{ const s = (assessJson?.result?.NBest?.[0]) || (assessJson?.NBest?.[0]) || assessJson; score = s?.PronunciationAssessment?.PronScore ?? s?.PronScore ?? s?.PronunciationScore ?? s?.Score ?? null; }catch(e){}
-  const summaryEl = card.querySelector('.rec-summary') || card.querySelector('.right > .rec-summary') || card.lastElementChild;
-  if (summaryEl) summaryEl.innerHTML = '';
+    const summaryEl = card.querySelector('.rec-summary') || card.querySelector('.right > .rec-summary') || card.lastElementChild;
+    if (summaryEl) summaryEl.innerHTML = '';
     card.__assessment = assessJson;
     // draw donut on card canvas
     try{
@@ -874,7 +930,7 @@ function markCardAssessed(sectionIdx, s3Key, assessJson){
       } else if (assessJson && assessJson.Words && Array.isArray(assessJson.Words)){
         words = assessJson.Words;
       }
-      const wordsTable = card.querySelector('.word-table tbody');
+    const wordsTable = card.querySelector('.word-table tbody');
       if (wordsTable){
         wordsTable.innerHTML = '';
         for (const w of words){
@@ -895,6 +951,8 @@ function markCardAssessed(sectionIdx, s3Key, assessJson){
         }
       }
     }catch(e){ console.warn('markCardAssessed word table', e); }
+    if (savedAt) setCardTimestamp(card, savedAt);
+    reorderRecordingList(listEl);
     updateEntrySummary(sectionIdx);
   }catch(e){ console.warn('markCardAssessed', e); }
 }
