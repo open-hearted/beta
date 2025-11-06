@@ -38,7 +38,9 @@
     .content { display: none; background-color: #fafafa; padding: 1rem; border: 1px solid #ccc; margin-top: 0.5rem; border-radius: 6px; white-space: pre-wrap; }
     .feedback { background: #fff; border-left: 4px solid #4caf50; padding: 0.5rem; margin-top: 0.5rem; font-size: 0.95rem; }
   .evaluation-block { background: #f9fafb; border: 1px solid #d1d5db; border-radius: 10px; padding: 1rem; margin-top: 1rem; }
-  .evaluation-title { margin: 0 0 0.5rem 0; font-size: 1.1rem; color: #374151; }
+  .evaluation-header { display: flex; align-items: center; gap: 0.75rem; margin: 0 0 0.5rem 0; }
+  .evaluation-title { margin: 0; font-size: 1.1rem; color: #374151; }
+  .evaluation-header button { margin: 0 0 0 auto; }
     #scoreBlock { margin: 1rem 0; text-align: center; }
     #wordsBlock { margin-top: 1rem; }
     table { width: 100%; border-collapse: collapse; text-align: left; }
@@ -155,10 +157,12 @@ sentences.forEach((sentence, idx) => {
       <button class="collapsible">📜 スクリプトを表示</button>
       <div class="content" style="display:none;"></div>
       <div class="evaluation-block listening-block">
-        <h3 class="evaluation-title">リスニング評価</h3>
+        <div class="evaluation-header">
+          <h3 class="evaluation-title">リスニング評価</h3>
+          <button id="note_${idx}_compare">ChatGPTでリスニング評価</button>
+        </div>
         <textarea id="note_${idx}_input" placeholder="聞こえた文を入力…"></textarea>
         <div class="feedback" id="feedback_${idx}"></div>
-        <button id="note_${idx}_compare">ChatGPTでリスニング評価</button>
       </div>
       <div class="evaluation-block translation-block">
         <h3 class="evaluation-title">翻訳評価</h3>
