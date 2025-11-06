@@ -51,6 +51,13 @@
   .pronunciation-controls .rec-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 0.65rem 1.1rem; background-color: #2563eb; }
   .pronunciation-controls .rec-toggle.recording { background-color: #dc2626; }
   .pronunciation-controls .pronunciation-submit { margin-left: auto; }
+  .evaluation-history { margin-top: 0.75rem; border-top: 1px dashed #d1d5db; padding-top: 0.75rem; display: flex; flex-direction: column; gap: 0.75rem; }
+  .history-entry { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
+  .history-entry-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: #6b7280; }
+  .history-row { display: flex; gap: 0.5rem; align-items: flex-start; }
+  .history-label { font-weight: 600; min-width: 3rem; color: #374151; font-size: 0.9rem; }
+  .history-text { flex: 1 1 auto; white-space: pre-wrap; word-break: break-word; font-size: 0.95rem; color: #1f2937; }
+  .history-empty { font-size: 0.9rem; color: #6b7280; }
     #scoreBlock { margin: 1rem 0; text-align: center; }
     #wordsBlock { margin-top: 1rem; }
     table { width: 100%; border-collapse: collapse; text-align: left; }
@@ -170,6 +177,114 @@ function storageRemove(baseKey) {
   } catch (e) {
     console.warn('storageRemove failed', e);
   }
+}
+
+const EVAL_HISTORY_LIMIT = 20;
+
+function evaluationHistoryKey(type, idx) {
+  return `${type}History_${idx}`;
+}
+
+function loadEvaluationHistory(type, idx) {
+  const raw = storageGet(evaluationHistoryKey(type, idx));
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed.filter(entry => entry && typeof entry === 'object');
+    }
+  } catch (e) {
+    console.warn('loadEvaluationHistory parse failed', e);
+  }
+  return [];
+}
+
+function saveEvaluationHistory(type, idx, history) {
+  try {
+    storageSet(evaluationHistoryKey(type, idx), JSON.stringify(history));
+  } catch (e) {
+    console.warn('saveEvaluationHistory failed', e);
+  }
+}
+
+function formatHistoryTimestamp(isoString) {
+  if (!isoString) return '';
+  const d = new Date(isoString);
+  if (Number.isNaN(d.getTime())) return '';
+  try {
+    return d.toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  } catch (e) {
+    return d.toISOString();
+  }
+}
+
+function renderEvaluationHistory(type, idx, entries) {
+  const container = document.getElementById(`${type}History_${idx}`);
+  if (!container) return;
+  const history = Array.isArray(entries) ? entries : loadEvaluationHistory(type, idx);
+  container.innerHTML = '';
+  if (!history.length) {
+    const empty = document.createElement('div');
+    empty.className = 'history-empty';
+    empty.textContent = type === 'translation' ? 'まだ翻訳評価はありません。' : 'まだリスニング評価はありません。';
+    container.appendChild(empty);
+    return;
+  }
+  history.forEach(entry => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'history-entry';
+
+    const header = document.createElement('div');
+    header.className = 'history-entry-header';
+    const timeEl = document.createElement('time');
+    timeEl.textContent = formatHistoryTimestamp(entry.createdAt) || '日時不明';
+    header.appendChild(timeEl);
+    const typeBadge = document.createElement('span');
+    typeBadge.textContent = type === 'translation' ? '翻訳評価' : 'リスニング評価';
+    header.appendChild(typeBadge);
+    wrapper.appendChild(header);
+
+    const inputRow = document.createElement('div');
+    inputRow.className = 'history-row';
+    const inputLabel = document.createElement('span');
+    inputLabel.className = 'history-label';
+    inputLabel.textContent = '入力';
+    const inputText = document.createElement('div');
+    inputText.className = 'history-text';
+    inputText.textContent = entry?.input || '';
+    inputRow.appendChild(inputLabel);
+    inputRow.appendChild(inputText);
+    wrapper.appendChild(inputRow);
+
+    const feedbackRow = document.createElement('div');
+    feedbackRow.className = 'history-row';
+    const feedbackLabel = document.createElement('span');
+    feedbackLabel.className = 'history-label';
+    feedbackLabel.textContent = '評価';
+    const feedbackText = document.createElement('div');
+    feedbackText.className = 'history-text';
+    feedbackText.textContent = entry?.feedback || '';
+    feedbackRow.appendChild(feedbackLabel);
+    feedbackRow.appendChild(feedbackText);
+    wrapper.appendChild(feedbackRow);
+
+    container.appendChild(wrapper);
+  });
+}
+
+function appendEvaluationHistory(type, idx, input, feedback) {
+  const trimmedInput = String(input || '').trim();
+  const trimmedFeedback = String(feedback || '').trim();
+  if (!trimmedInput && !trimmedFeedback) return;
+  const history = loadEvaluationHistory(type, idx);
+  history.unshift({ input: trimmedInput, feedback: trimmedFeedback, createdAt: new Date().toISOString() });
+  const limited = history.slice(0, EVAL_HISTORY_LIMIT);
+  saveEvaluationHistory(type, idx, limited);
+  renderEvaluationHistory(type, idx, limited);
+}
+
+function getEvaluationHistoryCount(type, idx) {
+  return loadEvaluationHistory(type, idx).length;
 }
 
 function computePagePrefix() {
@@ -339,13 +454,18 @@ function updateEntrySummary(idx) {
     translationFeedback = "";
   }
 
+  let listeningHistoryCount = 0;
+  let translationHistoryCount = 0;
+  try { listeningHistoryCount = getEvaluationHistoryCount('listening', idx); } catch (e) {}
+  try { translationHistoryCount = getEvaluationHistoryCount('translation', idx); } catch (e) {}
+
   const recList = document.getElementById(`recList_${idx}`);
   const recCount = recList ? recList.querySelectorAll('.rec-card').length : 0;
   const syncText = document.getElementById(`syncStatus_${idx}`)?.textContent?.trim() || "";
   const isDirty = entryEl?.dataset?.dirty === '1';
 
-  const listeningDone = Boolean(noteVal || listeningFeedback);
-  const translationDone = Boolean(transVal || translationFeedback);
+  const listeningDone = Boolean(noteVal || listeningFeedback || listeningHistoryCount);
+  const translationDone = Boolean(transVal || translationFeedback || translationHistoryCount);
   const recordingDone = recCount > 0;
   if (statusEl) {
     const statuses = [
@@ -396,6 +516,7 @@ function buildSections() {
           </div>
           <textarea id="note_${idx}_input" placeholder="聞こえた文を入力…"></textarea>
           <div class="feedback" id="feedback_${idx}"></div>
+          <div class="evaluation-history" id="listeningHistory_${idx}"></div>
         </div>
         <div class="evaluation-block translation-block">
           <div class="evaluation-header">
@@ -404,6 +525,7 @@ function buildSections() {
           </div>
           <textarea id="trans_${idx}_input" placeholder="日本語訳を入力…"></textarea>
           <div class="feedback" id="trans_feedback_${idx}"></div>
+          <div class="evaluation-history" id="translationHistory_${idx}"></div>
         </div>
         <div class="evaluation-block pronunciation-block">
           <div class="evaluation-header">
@@ -480,6 +602,8 @@ function setupBlock(idx, sentence) {
     if (savedTransFb && transFeedbackEl) transFeedbackEl.textContent = savedTransFb;
   } catch (e) {}
   updateEntrySummary(idx);
+  renderEvaluationHistory('listening', idx);
+  renderEvaluationHistory('translation', idx);
   setTimeout(() => {
     fetchAssessmentsForSection().catch(err => console.warn('prefetch assessments failed', err));
   }, idx * 150);
@@ -933,6 +1057,7 @@ async function callChatGPT(userText, refText, targetEl, isTranslation = false, i
     targetEl.textContent = feedback;
     const key = isTranslation ? `chatResponse_translation_${idx}` : `chatResponse_listening_${idx}`;
   try { storageSet(key, feedback); } catch(e){}
+    appendEvaluationHistory(isTranslation ? 'translation' : 'listening', idx, userText, feedback);
     // persist to server sidecar for cross-device reload
     try{
       const listening = document.getElementById(`note_${idx}_input`)?.value.trim() || '';
