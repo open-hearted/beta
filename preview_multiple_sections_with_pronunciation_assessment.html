@@ -786,13 +786,13 @@ function setupBlock(idx, sentence) {
       // attach blob to file input (so UI still uses fileInput.files if needed)
       const file = new File([blob], `rec_${Date.now()}.wav`, { type: 'audio/wav' });
       lastRecordedFile = file;
-  const previewUrl = URL.createObjectURL(blob);
-  showPendingPreview(file, previewUrl);
-  resultBox.textContent = '録音完了';
-  if (recStatus) recStatus.textContent = '録音完了';
+      const previewUrl = URL.createObjectURL(blob);
+      showPendingPreview(file, previewUrl);
+      if (resultBox) resultBox.textContent = '';
+      if (recStatus) recStatus.textContent = '録音完了';
       // stop timer and enable submit
-      try{ if (recorderRef.timerId) clearInterval(recorderRef.timerId); const tEl = document.getElementById(`recTimer_${idx}`); if (tEl) tEl.textContent = ''; }catch(e){}
-  if (submitBtn) submitBtn.disabled = false;
+    try{ if (recorderRef.timerId) clearInterval(recorderRef.timerId); const tEl = document.getElementById(`recTimer_${idx}`); if (tEl) tEl.textContent = ''; }catch(e){}
+    if (submitBtn) submitBtn.disabled = false;
     } catch(e){
       resultBox.textContent = '録音停止エラー: '+e.message;
     } finally {
