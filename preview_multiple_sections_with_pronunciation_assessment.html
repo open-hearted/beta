@@ -650,7 +650,7 @@ function setupBlock(idx, sentence) {
       // add recording card to the UI for this section
   const nowIso = new Date().toISOString();
   try { addRecordingCard(idx, { key: s3Key, url: audioUrl, fileName: fileBlob.name || ('rec_'+Date.now()+'.wav'), size: fileBlob.size || 0, lastModified: nowIso }); } catch(e){ console.warn('addRecordingCard failed', e); }
-      resultBox.textContent = 'アップロード完了。Azure評価へ…';
+  resultBox.textContent = 'アップロード完了。評価中…';
       // call azure-assess
     const referenceText = sentence;
     const assessResp = await fetch(API_ASSESS, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ audioUrl, referenceText, language: 'en-US' }) });
