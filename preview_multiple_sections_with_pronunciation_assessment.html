@@ -47,6 +47,8 @@
   .evaluation-header { display: flex; align-items: center; gap: 0.75rem; margin: 0 0 0.5rem 0; }
   .evaluation-title { margin: 0; font-size: 1.1rem; color: #374151; }
   .evaluation-header button { margin: 0 0 0 auto; }
+  .pronunciation-controls { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+  .pronunciation-controls .pronunciation-submit { margin-left: auto; }
     #scoreBlock { margin: 1rem 0; text-align: center; }
     #wordsBlock { margin-top: 1rem; }
     table { width: 100%; border-collapse: collapse; text-align: left; }
@@ -401,20 +403,24 @@ function buildSections() {
           <textarea id="trans_${idx}_input" placeholder="日本語訳を入力…"></textarea>
           <div class="feedback" id="trans_feedback_${idx}"></div>
         </div>
-    <h3>発音評価</h3>
-        <audio controls src="${base}/${idx + 1}.mp3" class="sample-audio" style="margin-top:0.5rem;margin-bottom:0.5rem;"></audio>
-        <button class="collapsible script-toggle secondary-script">📜 スクリプトを表示</button>
-        <div class="content script-content secondary-script-content" style="display:none;"></div>
-        <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">
-          <button id="recToggle_${idx}" title="録音開始">録音</button>
-          <span id="recStatus_${idx}" style="margin-left:8px;color:#4b5563;font-size:0.95rem;"></span>
-          <span id="recTimer_${idx}" style="margin-left:8px;color:#b91c1c;font-weight:600;"></span>
-          <button id="submitBtn_${idx}" disabled style="margin-left:auto;">発音評価を実行</button>
+        <div class="evaluation-block pronunciation-block">
+          <div class="evaluation-header">
+            <h3 class="evaluation-title">発音評価</h3>
+          </div>
+          <audio controls src="${base}/${idx + 1}.mp3" class="sample-audio" style="margin-top:0.5rem;margin-bottom:0.5rem;"></audio>
+          <button class="collapsible script-toggle secondary-script">📜 スクリプトを表示</button>
+          <div class="content script-content secondary-script-content" style="display:none;"></div>
+          <div class="pronunciation-controls">
+            <button id="recToggle_${idx}" title="録音開始">録音</button>
+            <span id="recStatus_${idx}" style="margin-left:8px;color:#4b5563;font-size:0.95rem;"></span>
+            <span id="recTimer_${idx}" style="margin-left:8px;color:#b91c1c;font-weight:600;"></span>
+            <button id="submitBtn_${idx}" class="pronunciation-submit" disabled>発音評価を実行</button>
+          </div>
+          <pre id="result_${idx}" style="margin:0;padding:0;"></pre>
+          <div id="pendingPreview_${idx}" class="pending-preview"></div>
+          <div id="recList_${idx}" style="margin-top:10px;"></div>
+          <div id="scoreBlock_${idx}"></div>
         </div>
-        <pre id="result_${idx}" style="margin:0;padding:0;"></pre>
-        <div id="pendingPreview_${idx}" class="pending-preview"></div>
-        <div id="recList_${idx}" style="margin-top:10px;"></div>
-        <div id="scoreBlock_${idx}"></div>
       </div>
     </details>
     `;
