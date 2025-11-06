@@ -1,0 +1,790 @@
+<!-- 2025-08-10 作成 各セクションに発音評価機能を含む -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>chatgpt + wav 複数セクション</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    /* make sizing predictable and avoid horizontal overflow */
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { overflow-x: hidden; }
+  body { font-family: sans-serif; padding: 1rem; background: #f0f2f5; max-width: none; width: 100%; margin: 0; line-height: 1.6; }
+    .card { background: transparent; border: none; padding: 0; margin-bottom: 2rem; box-shadow: none; }
+    .entry { border: 1px solid #ddd; border-radius: 12px; background: #fff; overflow: hidden; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05); }
+  .entry summary { list-style: none; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 1rem 1.25rem; background: #f7f8fc; cursor: pointer; font-weight: 600; color: #1f2937; }
+  .entry summary::before { content: '\25B6'; color: #6366f1; font-size: 0.85rem; transition: transform 0.2s ease; }
+  .entry.expanded summary::before,
+  .entry[open] summary::before { transform: rotate(90deg); }
+    .entry summary::-webkit-details-marker { display: none; }
+    .entry.expanded summary,
+    .entry[open] summary { border-bottom: 1px solid #e5e7eb; background: #eef2ff; }
+    .entry-title { flex: 1 1 160px; font-size: 1.05rem; }
+    .entry-snippet { flex: 2 1 240px; font-size: 0.95rem; color: #6b7280; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .entry-status { flex: 0 0 auto; font-size: 0.9rem; color: #374151; margin-left: auto; }
+    .entry-body { padding: 1.25rem; background: white; }
+    h1 { font-size: 2rem; color: #333; margin-bottom: 1rem; text-align: center; }
+    h2 { font-size: 1.3rem; color: #555; margin-bottom: 1rem; border-bottom: 2px solid #eee; padding-bottom: 0.5rem; }
+    h3 { font-size: 1.1rem; color: #666; margin-bottom: 0.8rem; }
+    input[type="text"], input[type="file"], textarea { width: 100%; padding: 0.7rem; margin: 0.5rem 0; font-size: 1rem; border: 2px solid #ddd; border-radius: 6px; box-sizing: border-box; transition: border-color 0.3s; }
+    button { background-color: #4caf50; color: white; border: none; padding: 0.7rem 1.2rem; font-size: 1rem; border-radius: 6px; cursor: pointer; margin: 0.3rem 0.5rem 0.3rem 0; transition: background-color 0.3s; }
+    button:hover { background-color: #45a049; }
+    button:disabled { background-color: #ccc; cursor: not-allowed; }
+    audio { width: 100%; margin: 1rem 0; border-radius: 6px; }
+    .subtitle { font-size: 1.4rem; margin-bottom: 1.5rem; }
+    .status { margin-top: 0.5rem; font-size: 1rem; color: #333; }
+    .collapsible { background-color: #eee; cursor: pointer; padding: 0.5rem 1rem; border: none; font-size: 0.95rem; margin-top: 0.8rem; width: 100%; border-radius: 6px; text-align: left; }
+    .collapsible:hover { background-color: #ddd; }
+    .content { display: none; background-color: #fafafa; padding: 1rem; border: 1px solid #ccc; margin-top: 0.5rem; border-radius: 6px; white-space: pre-wrap; }
+    .feedback { background: #fff; border-left: 4px solid #4caf50; padding: 0.5rem; margin-top: 0.5rem; font-size: 0.95rem; }
+    #scoreBlock { margin: 1rem 0; text-align: center; }
+    #wordsBlock { margin-top: 1rem; }
+    table { width: 100%; border-collapse: collapse; text-align: left; }
+    th, td { border: 1px solid #ddd; padding: 0.5rem; }
+    th { background: #f8f9fa; }
+  /* recording card layout */
+  .rec-card { display:flex; gap:12px; align-items:flex-start; background: #fff; border-radius:8px; padding:8px; width:100%; box-sizing:border-box; flex-wrap:wrap; }
+  .rec-card .left { width:92px; display:flex; align-items:center; justify-content:center; flex:0 0 92px; }
+  .rec-card .right { flex:1 1 auto; min-width:0; }
+  .rec-card canvas { background:transparent; }
+  .word-table { margin-top:8px; font-size:0.92rem; border-top:1px dashed #eee; padding-top:8px; }
+    @media (max-width: 768px) { body { padding: 0.5rem; } .card { padding: 1rem; } h1 { font-size: 1.5rem; } button { padding: 0.6rem 1rem; font-size: 0.9rem; } }
+    /* reference text styling: allow wrapping and sufficient height to avoid clipping */
+    .ref-text { width:100%; padding:0.65rem; margin-top:0.5rem; font-size:1rem; border:2px solid #ddd; border-radius:6px; box-sizing:border-box; min-height:72px; resize:vertical; }
+  </style>
+</head>
+<body>
+
+<h1>リスニング・翻訳・発音評価（統合）</h1>
+<div id="sentence-sections"></div>
+
+<script>
+'use strict';
+// 例文（適宜変更可）
+const sentences = [
+  "Many iPhones and other Apple products are made in China.",
+  "In recent years, Apple has expanded its manufacturing into other countries such as Vietnam and India.",
+  "But not so much to the United States.",
+  "That is changing.",
+  "This week, Apple said that over the next 4 years it would invest $500 billion in the US with plans that include building a Texas facility to manufacture artificial intelligence servers and commit to creating 20,000 US jobs.",
+  "Apple's announcement follows a meeting last week between CEO Tim Cook and President Donald Trump.",
+  "The iPhone maker is among US firms recently announcing domestic investment and job creation.",
+  "\"...and they're going to build here instead because they don't want to pay the tariffs.\"",
+  "In a social media post on Thursday, Trump doubled the 10% universal tariff imposed on China, effective Tuesday.",
+  "Observers say that Apple's move is part of its trend to diversify its supply chain and it's not related to Trump's tariffs on China.",
+  "I mean, they are now in the, in, have been for some years, i.., in the process of , uh, moving production away from China anyway, uh,  pre-tariff.",
+  "There's still a substantial amount in China, but, uhm.",
+  "Th, there's a trend here that's clear, and I think that Apple will continue that.",
+  "While much of Apple's plans had been known, the company is signaling its pro-US jobs and investment policy, a priority for the Trump administration.",
+  "They're just taking the opportunity to use, you know, the press releases to try to just get some more public exposure for a lot of things they were already spending and and obviously align well with kind of a pro, pro US policy.",
+  "As part of its US investment, Apple said it would produce its advanced silicon chips in the Arizona plant of TSMC, the Taiwanese semiconductor firm.",
+  "Michelle Quinn, VOA news."
+];
+const base = "../mp3/With $500B US investment, Apple pulling away from China, analysts say";
+const container = document.getElementById("sentence-sections");
+
+function updateEntrySummary(idx) {
+  const statusEl = document.getElementById(`status${idx}`);
+  const snippetEl = document.getElementById(`summarySnippet_${idx}`);
+  const entryEl = document.querySelector(`.entry[data-section="${idx}"]`);
+  if (!statusEl && !snippetEl) return;
+
+  const noteInput = document.getElementById(`note_${idx}_input`);
+  const transInput = document.getElementById(`trans_${idx}_input`);
+  const noteVal = (noteInput?.value || "").trim();
+  const transVal = (transInput?.value || "").trim();
+
+  let listeningFeedback = "";
+  let translationFeedback = "";
+  try {
+    listeningFeedback = localStorage.getItem(`chatResponse_listening_${idx}`) || "";
+    translationFeedback = localStorage.getItem(`chatResponse_translation_${idx}`) || "";
+  } catch (e) {
+    listeningFeedback = "";
+    translationFeedback = "";
+  }
+
+  const recList = document.getElementById(`recList_${idx}`);
+  const recCount = recList ? recList.querySelectorAll('.rec-card').length : 0;
+  const syncText = document.getElementById(`syncStatus_${idx}`)?.textContent?.trim() || "";
+  const isDirty = entryEl?.dataset?.dirty === '1';
+
+  const parts = [];
+  if (isDirty) parts.push("✏️ 未保存");
+  if (noteVal) parts.push("📝 メモ");
+  if (transVal) parts.push("🌐 訳文");
+  if (listeningFeedback) parts.push("👂 評価");
+  if (translationFeedback) parts.push("🈶 評価");
+  if (recCount) parts.push(`🎤 ${recCount}件`);
+  if (/保存中/.test(syncText)) parts.push("☁ 保存中");
+  else if (/保存済/.test(syncText) || /読み込み/.test(syncText)) parts.push("☁ 同期済");
+  else if (/失敗/.test(syncText)) parts.push("⚠️ 要確認");
+  else if (/ありません/.test(syncText)) parts.push("☁ 未同期");
+
+  if (!parts.length) parts.push("⬜ 入力なし");
+  if (statusEl) statusEl.textContent = parts.join(" ・ ");
+
+  if (snippetEl) {
+    const source = noteVal || transVal;
+    if (source) {
+      const normalized = source.replace(/\s+/g, " ").trim();
+      snippetEl.textContent = normalized.length > 60 ? `${normalized.slice(0, 60)}…` : normalized;
+    } else {
+      snippetEl.textContent = "メモなし";
+    }
+  }
+}
+
+sentences.forEach((sentence, idx) => {
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML = `
+  <details class="entry" data-section="${idx}">
+    <summary>
+      <span class="entry-title">セクション ${idx + 1}</span>
+      <span class="entry-snippet" id="summarySnippet_${idx}">メモなし</span>
+      <span class="entry-status" id="status${idx}">⬜ 入力なし</span>
+    </summary>
+    <div class="entry-body">
+      <audio controls src="${base}/${idx + 1}.mp3"></audio>
+      <div id="syncStatus_${idx}" style="font-size:0.9rem;color:#4b5563;margin-bottom:10px"></div>
+      <button class="collapsible">📜 スクリプトを表示</button>
+      <div class="content" style="display:none;"></div>
+      <textarea id="note_${idx}_input" placeholder="聞こえた文を入力…"></textarea>
+      <div class="feedback" id="feedback_${idx}"></div>
+      <button id="note_${idx}_compare">ChatGPTでリスニング評価</button>
+      <textarea id="trans_${idx}_input" placeholder="日本語訳を入力…"></textarea>
+      <div class="feedback" id="trans_feedback_${idx}"></div>
+      <button id="trans_${idx}_compare">ChatGPTで翻訳評価</button>
+      <h3>発音評価</h3>
+      <textarea id="refText_${idx}" class="ref-text">${sentence}</textarea>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">
+        <button id="recStart_${idx}" title="録音開始">録音</button>
+        <button id="recStop_${idx}" title="録音停止" disabled>停止</button>
+        <span id="recStatus_${idx}" style="margin-left:8px;color:#4b5563;font-size:0.95rem;"></span>
+        <span id="recTimer_${idx}" style="margin-left:8px;color:#b91c1c;font-weight:600;"></span>
+        <button id="submitBtn_${idx}" disabled style="margin-left:auto;">発音評価を実行</button>
+      </div>
+      <pre id="result_${idx}" style="margin:0;padding:0;"></pre>
+      <div id="recList_${idx}" style="margin-top:10px;"></div>
+      <div id="scoreBlock_${idx}"></div>
+    </div>
+  </details>
+  `;
+  container.appendChild(card);
+  setupBlock(idx, sentence);
+});
+
+function setupBlock(idx, sentence) {
+  const cardRoot = container.children[idx];
+  const entryEl = cardRoot?.querySelector(".entry");
+  const collapsibleBtn = cardRoot?.querySelector(".collapsible");
+  const contentEl = cardRoot?.querySelector(".content");
+
+  const noteInput = document.getElementById(`note_${idx}_input`);
+  const transInput = document.getElementById(`trans_${idx}_input`);
+  const feedbackEl = document.getElementById(`feedback_${idx}`);
+  const transFeedbackEl = document.getElementById(`trans_feedback_${idx}`);
+
+  if (entryEl) entryEl.dataset.dirty = '0';
+
+  if (entryEl) {
+    entryEl.addEventListener("toggle", () => {
+      entryEl.classList.toggle("expanded", entryEl.open);
+      if (entryEl.open) {
+        container.querySelectorAll('.entry').forEach(section => {
+          if (section !== entryEl && section.open) section.open = false;
+        });
+        fetchRemoteNotes(true);
+        fetchAssessmentsForSection(true);
+        setTimeout(() => {
+          document.getElementById(`note_${idx}_input`)?.focus({ preventScroll: false });
+        }, 50);
+      } else {
+        saveNotesToServer(idx);
+      }
+      updateEntrySummary(idx);
+    });
+  }
+
+  if (contentEl) contentEl.textContent = sentence;
+  noteInput.value = localStorage.getItem(`note_${idx}`) || "";
+  transInput.value = localStorage.getItem(`trans_${idx}`) || "";
+  try {
+    const savedListenFb = localStorage.getItem(`chatResponse_listening_${idx}`);
+    if (savedListenFb && feedbackEl) feedbackEl.textContent = savedListenFb;
+    const savedTransFb = localStorage.getItem(`chatResponse_translation_${idx}`);
+    if (savedTransFb && transFeedbackEl) transFeedbackEl.textContent = savedTransFb;
+  } catch (e) {}
+  updateEntrySummary(idx);
+
+  let remoteNoteLoading = false;
+  let notesLoaded = false;
+  let notesDirty = false;
+  let assessmentsLoaded = false;
+  let assessmentLoading = false;
+
+  async function fetchRemoteNotes(force = false) {
+    if (remoteNoteLoading) return;
+    if (notesLoaded && !force) return;
+    remoteNoteLoading = true;
+    const syncEl = document.getElementById(`syncStatus_${idx}`);
+    try {
+      const pagePrefix = (() => { let p = location.host + location.pathname; p = p.replace(/[^A-Za-z0-9._\-/]/g,'_'); if (!p.endsWith('/')) p += '/'; return p; })();
+      const sidecarKey = pagePrefix + `notes_section_${idx}.assessment.json`;
+      const resp = await fetch(`/api/assessment?key=${encodeURIComponent(sidecarKey)}`);
+      if (!resp.ok) {
+        if (syncEl) syncEl.textContent = 'サーバーにメモはありません';
+        return;
+      }
+      const j = await resp.json().catch((error) => {
+        console.warn('parse sidecar json', error);
+        return null;
+      });
+      const item = j?.item;
+      if (item && item.result && typeof item.result === 'object') {
+        const r = item.result;
+        if (r.listening || r.translation || r.listeningFeedback || r.translationFeedback) {
+          if (!notesDirty) {
+            noteInput.value = r.listening ?? noteInput.value;
+            transInput.value = r.translation ?? transInput.value;
+            try { if (r.listeningFeedback) { feedbackEl.textContent = r.listeningFeedback; localStorage.setItem(`chatResponse_listening_${idx}`, r.listeningFeedback); } } catch (error) {}
+            try { if (r.translationFeedback) { transFeedbackEl.textContent = r.translationFeedback; localStorage.setItem(`chatResponse_translation_${idx}`, r.translationFeedback); } } catch (error) {}
+            localStorage.setItem(`note_${idx}`, noteInput.value.trim());
+            localStorage.setItem(`trans_${idx}`, transInput.value.trim());
+            if (entryEl) entryEl.dataset.dirty = '0';
+            notesDirty = false;
+          }
+          if (syncEl) syncEl.textContent = 'サーバーから読み込みました';
+        }
+      } else if (syncEl) {
+        syncEl.textContent = 'サーバーにメモはありません';
+      }
+    } catch (error) {
+      console.warn('fetchRemoteNotes failed', error);
+      if (syncEl) syncEl.textContent = '読み込みに失敗';
+    } finally {
+      remoteNoteLoading = false;
+      notesLoaded = true;
+      updateEntrySummary(idx);
+    }
+  }
+  // localStorage for in-session persistence; server sync happens when section closes
+  noteInput.addEventListener("input", () => {
+    const v = noteInput.value.trim();
+    localStorage.setItem(`note_${idx}`, v);
+    notesDirty = true;
+    if (entryEl) entryEl.dataset.dirty = '1';
+    const syncEl = document.getElementById(`syncStatus_${idx}`);
+    if (syncEl) syncEl.textContent = '未保存 (閉じると保存)';
+    updateEntrySummary(idx);
+  });
+  transInput.addEventListener("input", () => {
+    const v = transInput.value.trim();
+    localStorage.setItem(`trans_${idx}`, v);
+    notesDirty = true;
+    if (entryEl) entryEl.dataset.dirty = '1';
+    const syncEl = document.getElementById(`syncStatus_${idx}`);
+    if (syncEl) syncEl.textContent = '未保存 (閉じると保存)';
+    updateEntrySummary(idx);
+  });
+  document.getElementById(`note_${idx}_compare`).addEventListener("click", () =>
+    callChatGPT(noteInput.value.trim(), sentence, feedbackEl, false, idx)
+  );
+  document.getElementById(`trans_${idx}_compare`).addEventListener("click", () =>
+    callChatGPT(transInput.value.trim(), sentence, transFeedbackEl, true, idx)
+  );
+
+  // save note/translation pair to server sidecar for cross-device sync
+  async function saveNotesToServer(sectionIdx){
+    if (!notesDirty) return;
+    try{
+      const syncEl = document.getElementById(`syncStatus_${sectionIdx}`);
+      const listening = document.getElementById(`note_${sectionIdx}_input`).value.trim();
+      const translation = document.getElementById(`trans_${sectionIdx}_input`).value.trim();
+      if (syncEl) syncEl.textContent = '保存中…';
+      updateEntrySummary(sectionIdx);
+      const pagePrefix = (() => { let p = location.host + location.pathname; p = p.replace(/[^A-Za-z0-9._\-/]/g,'_'); if (!p.endsWith('/')) p += '/'; return p; })();
+      const body = { key: pagePrefix + `notes_section_${sectionIdx}`, result: { listening, translation, savedAt: new Date().toISOString() }, referenceText: '' };
+      const resp = await fetch('/api/assessment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (resp && resp.ok) {
+        if (syncEl) syncEl.textContent = '保存済み';
+        notesDirty = false;
+        if (entryEl) entryEl.dataset.dirty = '0';
+        notesLoaded = true;
+      } else {
+        if (syncEl) syncEl.textContent = '保存に失敗';
+        console.warn('saveNotesToServer resp not ok', resp);
+        notesDirty = true;
+        if (entryEl) entryEl.dataset.dirty = '1';
+      }
+      updateEntrySummary(sectionIdx);
+    }catch(e){
+      console.warn('saveNotesToServer failed', e);
+      const syncEl = document.getElementById(`syncStatus_${sectionIdx}`);
+      if (syncEl) syncEl.textContent = '保存に失敗';
+      notesDirty = true;
+      if (entryEl) entryEl.dataset.dirty = '1';
+      updateEntrySummary(sectionIdx);
+    }
+  }
+  if (collapsibleBtn && contentEl) {
+    collapsibleBtn.addEventListener("click", () => {
+      const isVisible = contentEl.style.display === "block";
+      contentEl.style.display = isVisible ? "none" : "block";
+      collapsibleBtn.textContent = isVisible ? "📜 スクリプトを表示" : "📜 スクリプトを閉じる";
+    });
+  }
+  // 発音評価: 録音 or ファイル選択 -> S3アップロード -> Azure 評価 -> サイドカー保存 -> 表示
+  const API_UPLOAD = '/api/upload';
+  const API_ASSESS = '/api/azure-assess';
+  const API_ASSESS_SAVE = '/api/assessment';
+
+  // page prefix (used for S3 prefixing to keep recordings per-page)
+  const PAGE_PREFIX = (() => {
+    let p = location.host + location.pathname;
+    p = p.replace(/[^A-Za-z0-9._\-/]/g,'_');
+    if (!p.endsWith('/')) p += '/';
+    return p;
+  })();
+
+  async function fetchAssessmentsForSection(force = false) {
+    if (assessmentLoading) return;
+    if (assessmentsLoaded && !force) return;
+    assessmentLoading = true;
+    const prefix = PAGE_PREFIX + `section_${idx}/`;
+    try {
+      const upl = await fetch('/api/upload?prefix=' + encodeURIComponent(prefix));
+      if (!upl.ok) return;
+      const ju = await upl.json().catch(() => null);
+      if (!ju || !Array.isArray(ju.items)) return;
+      const collected = [];
+      for (const it of ju.items) {
+        const key = it.key;
+        if (!key) continue;
+        try {
+          let fileUrl = it.presignedUrl || it.url || null;
+          if (!fileUrl) {
+            const info = await fetch('/api/upload?key=' + encodeURIComponent(key));
+            if (info.ok) {
+              const infoJson = await info.json().catch(() => null);
+              fileUrl = infoJson?.item?.presignedUrl || infoJson?.item?.url || fileUrl;
+            }
+          }
+          addRecordingCard(idx, { key, url: fileUrl, fileName: key.split('/').pop(), size: it.size || 0 });
+          const assessResp = await fetch('/api/assessment?key=' + encodeURIComponent(key + '.assessment.json'));
+          if (!assessResp.ok) continue;
+          const detail = await assessResp.json().catch(() => null);
+          const payload = detail?.item;
+          const result = payload?.result || null;
+          if (!result) continue;
+          let ts = null;
+          if (payload && payload.savedAt) ts = Date.parse(payload.savedAt);
+          else if (it.lastModified) ts = (new Date(it.lastModified)).getTime();
+          else ts = Date.now();
+          collected.push({ key, result, ts });
+          markCardAssessed(idx, key, result);
+        } catch (error) {
+          console.warn('fetchAssessmentsForSection item failed', error);
+        }
+      }
+      if (collected.length) {
+        const latest = collected.sort((a, b) => (b.ts || 0) - (a.ts || 0))[0];
+        if (latest) {
+          displayResults(JSON.stringify(latest.result), idx);
+        }
+      }
+    } catch (error) {
+      console.warn('fetchAssessmentsForSection failed', error);
+    } finally {
+      assessmentLoading = false;
+      assessmentsLoaded = true;
+      updateEntrySummary(idx);
+    }
+  }
+
+  // no file input: only recorded files are supported
+  let lastRecordedFile = null;
+  const resultBox = document.getElementById(`result_${idx}`);
+  const refInput = document.getElementById(`refText_${idx}`);
+  const recStatus = document.getElementById(`recStatus_${idx}`);
+
+  // recorder per-section (uses AudioWorklet if available)
+  let _recorder = null; // storing state per section in closure
+  async function startRecordingForSection(){
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const ac = new (window.AudioContext||window.webkitAudioContext)({ sampleRate: 16000 });
+      try { if (ac.state === 'suspended') await ac.resume(); } catch {}
+      await ac.audioWorklet.addModule('./audio-recording/audio-processor.js');
+      const src = ac.createMediaStreamSource(stream);
+      const node = new AudioWorkletNode(ac, 'audio-processor');
+      const mute = ac.createGain(); mute.gain.value = 0;
+      const chunks = [];
+      node.port.onmessage = ev => chunks.push(new Float32Array(ev.data));
+      src.connect(node); node.connect(mute).connect(ac.destination);
+      _recorder = { ac, stream, node, mute, chunks, startedAt: performance.now(), timerId: null };
+      // disable submit until recording is finished
+      try { document.getElementById(`submitBtn_${idx}`).disabled = true; } catch(e){}
+      // start timer display
+      try{
+        const timerEl = document.getElementById(`recTimer_${idx}`);
+        const start = performance.now();
+        _recorder.timerId = setInterval(()=>{
+          const s = Math.floor((performance.now()-start)/1000);
+          const mm = String(Math.floor(s/60)).padStart(2,'0');
+          const ss = String(s%60).padStart(2,'0');
+          if (timerEl) timerEl.textContent = `${mm}:${ss}`;
+        }, 250);
+      }catch(e){}
+      document.getElementById(`recStart_${idx}`).disabled = true;
+      document.getElementById(`recStop_${idx}`).disabled = false;
+      resultBox.textContent = '録音中...';
+    } catch(e){ resultBox.textContent = '録音開始失敗: '+e.message; }
+  }
+
+  async function stopRecordingForSection(){
+    if (!_recorder) return;
+    try {
+      const { ac, stream, node, mute, chunks, startedAt } = _recorder;
+      try { node && node.disconnect(); } catch {}
+      try { mute && mute.disconnect(); } catch {}
+      try { stream && stream.getTracks().forEach(t=>t.stop()); } catch {}
+      const total = chunks.reduce((s,a)=> s + a.length, 0);
+      const buf = new Float32Array(total);
+      let off = 0; for (const a of chunks){ buf.set(a, off); off += a.length; }
+      // resample if necessary (ac.sampleRate -> 16000 assumed)
+      const effective = ac.sampleRate || 16000;
+      let out = buf;
+      if (Math.abs(effective - 16000) > 1) out = resampleLinear(buf, effective, 16000);
+      const wav = encodeWavFromFloat32(out, 16000);
+      const blob = new Blob([wav], { type: 'audio/wav' });
+      // attach blob to file input (so UI still uses fileInput.files if needed)
+      const file = new File([blob], `rec_${Date.now()}.wav`, { type: 'audio/wav' });
+      lastRecordedFile = file;
+      resultBox.textContent = '録音完了: ' + (file.size? fmtBytes(file.size) : '不明');
+      if (recStatus) recStatus.textContent = `録音完了 (${fmtBytes(file.size)})`;
+      // stop timer and enable submit
+      try{ if (_recorder.timerId) clearInterval(_recorder.timerId); const tEl = document.getElementById(`recTimer_${idx}`); if (tEl) tEl.textContent = ''; }catch(e){}
+      try { document.getElementById(`submitBtn_${idx}`).disabled = false; } catch(e){}
+    } catch(e){ resultBox.textContent = '録音停止エラー: '+e.message; }
+    try { await _recorder.ac.close(); } catch {}
+    _recorder = null;
+    document.getElementById(`recStart_${idx}`).disabled = false;
+    document.getElementById(`recStop_${idx}`).disabled = true;
+  }
+
+  document.getElementById(`recStart_${idx}`).addEventListener('click', startRecordingForSection);
+  document.getElementById(`recStop_${idx}`).addEventListener('click', stopRecordingForSection);
+  // move the submit button into the same row as the recording controls for better UX
+  try{
+    const recStartEl = document.getElementById(`recStart_${idx}`);
+    const submitBtn = document.getElementById(`submitBtn_${idx}`);
+    if (recStartEl && submitBtn && recStartEl.parentNode && !recStartEl.parentNode.contains(submitBtn)){
+      submitBtn.style.marginLeft = '8px';
+      recStartEl.parentNode.appendChild(submitBtn);
+    }
+  }catch(e){}
+
+  // helper: encode/resample functions (from integrated file)
+  function resampleLinear(data, src, dst){ if (src === dst) return data; const ratio = src / dst, N = Math.round(data.length / ratio); const out = new Float32Array(N); for (let i=0;i<N;i++){ const p = i * ratio, i0 = Math.floor(p), i1 = Math.min(i0+1, data.length-1), t = p - i0; out[i] = data[i0]*(1-t) + data[i1]*t; } return out; }
+  function encodeWavFromFloat32(ch, sr){ const len = ch.length, buf = new ArrayBuffer(44 + len*2), v = new DataView(buf); const w = (s,o)=>{ for(let i=0;i<s.length;i++) v.setUint8(o+i,s.charCodeAt(i)); }; let p=0; w('RIFF',p); p+=4; v.setUint32(p,36+len*2,true); p+=4; w('WAVE',p); p+=4; w('fmt ',p); p+=4; v.setUint32(p,16,true); p+=4; v.setUint16(p,1,true); p+=2; v.setUint16(p,1,true); p+=2; v.setUint32(p,sr,true); p+=4; v.setUint32(p,sr*2,true); p+=4; v.setUint16(p,2,true); p+=2; v.setUint16(p,16,true); p+=2; w('data',p); p+=4; v.setUint32(p,len*2,true); p+=4; for(let i=0;i<len;i++){ const s=Math.max(-1,Math.min(1,ch[i])); v.setInt16(p, s<0? s*0x8000 : s*0x7FFF, true); p+=2; } return buf; }
+  function fmtBytes(b){ if (!b) return ''; if (b<1024) return b+'B'; if (b<1024*1024) return (b/1024).toFixed(1)+'KB'; return (b/1024/1024).toFixed(2)+'MB'; }
+
+  // upload blob/file to /api/upload with prefix per section
+  async function uploadFileAndAssess(fileBlob){
+    resultBox.textContent = 'アップロード中...';
+    const fd = new FormData();
+    fd.append('file', new File([fileBlob], fileBlob.name || `rec_${Date.now()}.wav`, { type: fileBlob.type || 'audio/wav' }));
+    const prefix = PAGE_PREFIX + `section_${idx}/`;
+    fd.append('prefix', prefix);
+    let uploadResp;
+    try {
+      // disable submit during upload/assess
+      try { document.getElementById(`submitBtn_${idx}`).disabled = true; } catch(e){}
+      uploadResp = await fetch(API_UPLOAD, { method:'POST', body: fd });
+      if (!uploadResp.ok) throw new Error('upload failed ' + uploadResp.status);
+      const upj = await uploadResp.json();
+      const audioUrl = upj.presignedUrl || upj.url;
+      const s3Key = upj.key;
+      // add recording card to the UI for this section
+      try { addRecordingCard(idx, { key: s3Key, url: audioUrl, fileName: fileBlob.name || ('rec_'+Date.now()+'.wav'), size: fileBlob.size || 0 }); } catch(e){ console.warn('addRecordingCard failed', e); }
+      resultBox.textContent = 'アップロード完了。Azure評価へ…';
+      // call azure-assess
+      const assessResp = await fetch(API_ASSESS, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ audioUrl, referenceText: refInput.value || sentence, language: 'en-US' }) });
+      if (!assessResp.ok) { const t = await assessResp.text(); throw new Error('azure-assess failed: '+assessResp.status+' '+t); }
+      const assessJson = await assessResp.json();
+      // save assessment sidecar: key should be s3Key
+      const saveResp = await fetch(API_ASSESS_SAVE, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ key: s3Key, result: assessJson, referenceText: refInput.value || sentence }) });
+      if (!saveResp.ok) { const t = await saveResp.text(); throw new Error('save assessment failed: '+saveResp.status+' '+t); }
+      resultBox.textContent = '評価完了・保存済み';
+      // render results
+  // update card with assessment marker and also render main area
+  try { markCardAssessed(idx, s3Key, assessJson); } catch(e){}
+  displayResults(JSON.stringify(assessJson.result || assessJson?.result || assessJson), idx);
+    } catch(e){ resultBox.textContent = 'エラー: '+e.message; }
+    updateEntrySummary(idx);
+  }
+
+  // submit handler (file input must contain .wav or recording filled into fileInput)
+  document.getElementById(`submitBtn_${idx}`).onclick = async () => {
+    resultBox.textContent = '';
+    if (!lastRecordedFile) { resultBox.textContent = '録音を行ってから「発音評価を実行」を押してください。'; return; }
+    await uploadFileAndAssess(lastRecordedFile);
+  };
+
+  // page-level word toggle removed; per-card controls are used instead
+}
+
+// ChatGPT連携（日本語プロンプト）
+async function callChatGPT(userText, refText, targetEl, isTranslation = false, idx) {
+  const prompt = isTranslation
+    ? { system: "以下は翻訳評価です。", template: "学習者の訳: {{student}}\n原文: {{reference}}\n誤訳や不足、良い点を日本語で簡潔に指摘してください。" }
+    : { system: "以下はリスニング評価です。", template: "学習者: {{student}}\n正解: {{reference}}\n差分を比較し、日本語で簡潔にフィードバックしてください。" };
+  const systemPrompt = prompt.system;
+  const userPrompt = prompt.template.replace("{{student}}", userText).replace("{{reference}}", refText);
+  targetEl.textContent = "⏳ ChatGPTと比較中…";
+  try {
+    // Call server-side proxy which uses OPENAI_API_KEY from environment
+    const body = { model: 'gpt-4', messages: [ { role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt } ] };
+    const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!res.ok) throw new Error(`Error: ${res.status} ${res.statusText}`);
+    const data = await res.json();
+    const feedback = data.choices?.[0]?.message?.content || "⚠️ 応答がありません。";
+    targetEl.textContent = feedback;
+    const key = isTranslation ? `chatResponse_translation_${idx}` : `chatResponse_listening_${idx}`;
+    try { localStorage.setItem(key, feedback); } catch(e){}
+    // persist to server sidecar for cross-device reload
+    try{
+      const listening = document.getElementById(`note_${idx}_input`)?.value.trim() || '';
+      const translation = document.getElementById(`trans_${idx}_input`)?.value.trim() || '';
+      const listeningFeedback = isTranslation ? (localStorage.getItem(`chatResponse_listening_${idx}`) || '') : (isTranslation ? '' : feedback);
+      const translationFeedback = isTranslation ? feedback : (localStorage.getItem(`chatResponse_translation_${idx}`) || '');
+      const pagePrefixLocal = (() => { let p = location.host + location.pathname; p = p.replace(/[^A-Za-z0-9._\-/]/g,'_'); if (!p.endsWith('/')) p += '/'; return p; })();
+      const body2 = { key: pagePrefixLocal + `notes_section_${idx}`, result: { listening, translation, listeningFeedback, translationFeedback, savedAt: new Date().toISOString() }, referenceText: '' };
+      fetch('/api/assessment', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body2) }).catch(e=>console.warn('persist chat feedback failed', e));
+    }catch(e){ console.warn('persist chat feedback outer failed', e); }
+    updateEntrySummary(idx);
+  } catch (e) {
+    targetEl.textContent = `⚠️ エラー発生: ${e.message}`;
+    updateEntrySummary(idx);
+  }
+}
+
+function displayResults(jsonString, idx) {
+  // make function tolerant to multiple Azure response shapes
+  let data;
+  try { data = (typeof jsonString === 'string') ? JSON.parse(jsonString) : jsonString; } catch (e) { data = jsonString; }
+
+  // normalize: try a few common nesting patterns where the actual NBest may live
+  const pickNested = (obj) => {
+    if (!obj || typeof obj !== 'object') return null;
+    if (Array.isArray(obj.NBest) && obj.NBest.length) return obj;
+    if (obj.result && Array.isArray(obj.result.NBest) && obj.result.NBest.length) return obj.result;
+    if (obj.result && obj.result.result && Array.isArray(obj.result.result.NBest) && obj.result.result.NBest.length) return obj.result.result;
+    // sometimes the payload itself is the NBest entry
+    if (Array.isArray(obj) && obj.length && obj[0].Words) return { NBest: obj };
+    return obj;
+  };
+
+  const normalized = pickNested(data) || data;
+  // prefer first NBest entry; if missing, fallback to 'result' object
+  const nb = (Array.isArray(normalized.NBest) && normalized.NBest[0]) || normalized.NBest || normalized.result || normalized;
+
+  // PronunciationAssessment may be nested or flattened
+  const pa = nb.PronunciationAssessment || nb;
+  const score = pa.PronScore ?? pa.PronunciationScore ?? pa.Pron ?? pa.PronunciationScore ?? null;
+  const accuracy = pa.AccuracyScore ?? pa.AccScore ?? nb.AccuracyScore ?? nb.AccScore ?? null;
+  const fluency = pa.FluencyScore ?? pa.FluScore ?? nb.FluencyScore ?? nb.FluScore ?? null;
+  const completeness = pa.CompletenessScore ?? pa.CompScore ?? nb.CompletenessScore ?? nb.CompScore ?? null;
+  const words = nb.Words || pa.Words || [];
+
+  // main numeric score and subscores intentionally omitted — per-card UI shows word-level details
+  const scoreEl = document.getElementById(`scoreBlock_${idx}`);
+  if (scoreEl) scoreEl.innerHTML = '';
+  // also hide/clear the page-level words block to avoid duplicate information
+  const wordsMain = document.getElementById(`wordsBlock_${idx}`);
+  if (wordsMain) { wordsMain.style.display = 'none'; const tb = wordsMain.querySelector('tbody'); if (tb) tb.innerHTML = ''; }
+  // done — per-card rendering handled elsewhere
+  return;
+  // page-level words display intentionally suppressed; details shown on recording cards
+}
+
+// ===== persistence: load saved recordings & assessments for this page =====
+// small utility: format bytes -> human readable
+function fmtBytes(b){
+  if (!b && b !== 0) return '';
+  if (b < 1024) return b + 'B';
+  if (b < 1024 * 1024) return (b / 1024).toFixed(1) + 'KB';
+  return (b / 1024 / 1024).toFixed(2) + 'MB';
+}
+// create a small card element in the per-section recList to represent one recording
+function addRecordingCard(sectionIdx, meta){
+  try{
+    const listEl = document.getElementById(`recList_${sectionIdx}`);
+    if (!listEl) return;
+    // avoid duplicate card for same key
+    if (meta && meta.key){
+      if (listEl.querySelector(`[data-s3key="${meta.key}"]`)) return;
+    }
+    const wrapper = document.createElement('div');
+    wrapper.className = 'rec-card';
+    if (meta && meta.key) wrapper.setAttribute('data-s3key', meta.key);
+
+    // left: circular score canvas
+    const left = document.createElement('div'); left.className = 'left';
+    const canvas = document.createElement('canvas'); canvas.width = 80; canvas.height = 80; canvas.style.width = '72px'; canvas.style.height = '72px';
+    // default: hollow circle placeholder
+    left.appendChild(canvas);
+
+    // right: inline row with audio + controls (donut, audio, buttons on one line)
+    const right = document.createElement('div'); right.className = 'right';
+    const inlineRow = document.createElement('div'); inlineRow.style = 'display:flex;align-items:center;gap:12px;';
+    // audio element (shortened to fit)
+    let a = null;
+    if (meta.url){
+      a = document.createElement('audio'); a.controls = true; a.src = meta.url;
+      // allow audio control to flex/grow to fill remaining horizontal space
+      a.style.flex = '1 1 auto'; a.style.width = 'auto'; a.style.maxWidth = 'none'; a.style.minWidth = '140px'; a.style.display = 'block';
+    } else {
+      a = document.createElement('div'); a.textContent = '（音声なし）'; a.style.color = '#666';
+    }
+  const controls = document.createElement('div'); controls.style = 'display:flex;gap:8px;align-items:center;flex:0 0 auto;';
+  const toggleWordsBtn = document.createElement('button'); toggleWordsBtn.textContent = '単語'; toggleWordsBtn.className = 'toggle-words-btn'; toggleWordsBtn.disabled = true;
+    const delBtn = document.createElement('button'); delBtn.textContent = '削除'; delBtn.style.background = '#e53e3e';
+    controls.appendChild(toggleWordsBtn); controls.appendChild(delBtn);
+    inlineRow.appendChild(a); inlineRow.appendChild(controls);
+    right.appendChild(inlineRow);
+
+    const summary = document.createElement('div'); summary.className = 'rec-summary'; summary.style = 'margin-top:6px;color:#333;font-size:0.95rem;'; summary.innerHTML = '';
+    right.appendChild(summary);
+
+    // word-level table (hidden initially)
+    const wordsContainer = document.createElement('div'); wordsContainer.className = 'word-table'; wordsContainer.style.display = 'none';
+    wordsContainer.innerHTML = `<table style="width:100%;border-collapse:collapse;"><thead><tr><th>単語</th><th>スコア</th><th>判定</th></tr></thead><tbody></tbody></table>`;
+    right.appendChild(wordsContainer);
+
+    // wire up buttons
+    delBtn.onclick = async ()=>{
+      if (!meta.key) { wrapper.remove(); updateEntrySummary(sectionIdx); return; }
+      if (!confirm('この録音を削除しますか？')) return;
+      const resp = await fetch('/api/upload?key=' + encodeURIComponent(meta.key), { method: 'DELETE' });
+      if (resp.ok) { wrapper.remove(); updateEntrySummary(sectionIdx); } else { alert('削除に失敗しました'); }
+    };
+    toggleWordsBtn.onclick = ()=>{
+      try{
+        const wc = wrapper.querySelector('.word-table');
+        if (!wc) return;
+        if (wc.style.display === 'none' || wc.style.display === ''){ wc.style.display = 'block'; toggleWordsBtn.textContent = '隠す'; }
+        else { wc.style.display = 'none'; toggleWordsBtn.textContent = '単語'; }
+      }catch(e){ console.warn('toggleWordsBtn', e); }
+    };
+
+    wrapper.appendChild(left);
+    wrapper.appendChild(right);
+    listEl.appendChild(wrapper);
+    updateEntrySummary(sectionIdx);
+    // ensure only our donut canvas remains in the card (remove stray canvases)
+    canvas.classList.add('rec-donut');
+    const allCanvases = wrapper.querySelectorAll('canvas');
+    allCanvases.forEach(c => { if (!c.classList.contains('rec-donut')) c.remove(); });
+    // draw initial placeholder donut
+    drawDonutOnCanvas(canvas, null);
+  }catch(e){ console.warn('addRecordingCard error', e); }
+}
+
+// mark an existing card as assessed and attach short summary (and store full result on element)
+function markCardAssessed(sectionIdx, s3Key, assessJson){
+  try{
+    const listEl = document.getElementById(`recList_${sectionIdx}`); if (!listEl) return;
+    const card = listEl.querySelector(`[data-s3key="${s3Key}"]`);
+    if (!card) return;
+    const summary = card.querySelector('div');
+    // try to pull a numeric score
+    const nb = (assessJson && (assessJson.result || assessJson))?.result || assessJson?.result || assessJson;
+    // find first score value tolerant
+    let score = null;
+    try{ const s = (assessJson?.result?.NBest?.[0]) || (assessJson?.NBest?.[0]) || assessJson; score = s?.PronunciationAssessment?.PronScore ?? s?.PronScore ?? s?.PronunciationScore ?? s?.Score ?? null; }catch(e){}
+  const summaryEl = card.querySelector('.rec-summary') || card.querySelector('.right > .rec-summary') || card.lastElementChild;
+  if (summaryEl) summaryEl.innerHTML = '';
+    card.__assessment = assessJson;
+    // draw donut on card canvas
+    try{
+      const canvas = card.querySelector('canvas');
+      if (canvas){ drawDonutOnCanvas(canvas, Number(score)); }
+    }catch(e){}
+    // populate word table if available; enable the toggle button when words exist
+    try{
+      const root = pickNBestRoot(assessJson) || pickNBestRoot(assessJson?.result) || pickNBestRoot(assessJson?.result?.result) || null;
+      let words = [];
+      if (root && Array.isArray(root.NBest) && root.NBest[0]){
+        words = root.NBest[0].Words || root.NBest[0].PronunciationAssessment?.Words || [];
+      } else if (assessJson && Array.isArray(assessJson.NBest) && assessJson.NBest[0]){
+        words = assessJson.NBest[0].Words || assessJson.NBest[0].PronunciationAssessment?.Words || [];
+      } else if (assessJson && assessJson.Words && Array.isArray(assessJson.Words)){
+        words = assessJson.Words;
+      }
+      const wordsTable = card.querySelector('.word-table tbody');
+      if (wordsTable){
+        wordsTable.innerHTML = '';
+        for (const w of words){
+          const wa = w.PronunciationAssessment || w;
+          const wordText = w.Word || w.Display || w?.WordText || '';
+          const acc = (wa && (wa.AccuracyScore ?? wa.AccScore ?? wa.PronunciationAssessment?.AccuracyScore)) ?? 'N/A';
+          const errorType = wa?.ErrorType || wa?.PronunciationAssessment?.ErrorType || 'None';
+          const label = { 'None':'✅ 正しく発音','Omission':'⚠️ 脱落','Mispronunciation':'🌀 誤り','Insertion':'➕ 挿入' }[errorType] || errorType;
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td style="text-align:center">${wordText}</td><td style="text-align:center"><strong>${acc}</strong></td><td style="text-align:center">${label}</td>`;
+          wordsTable.appendChild(tr);
+        }
+        const wc = card.querySelector('.word-table');
+        if (wc){
+          // keep hidden by default, but enable toggle button
+          wc.style.display = 'none';
+          const tb = card.querySelector('.toggle-words-btn'); if (tb) { tb.disabled = false; tb.textContent = '単語'; }
+        }
+      }
+    }catch(e){ console.warn('markCardAssessed word table', e); }
+    updateEntrySummary(sectionIdx);
+  }catch(e){ console.warn('markCardAssessed', e); }
+}
+
+// draw donut/arc on the given canvas; if score is null, show hollow gray circle
+function drawDonutOnCanvas(canvas, score){
+  try{
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height; const cx = w/2, cy = h/2, r = Math.min(w,h)/2 - 6;
+    ctx.clearRect(0,0,w,h);
+    // background track
+    ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.strokeStyle = '#eee'; ctx.lineWidth = 8; ctx.stroke();
+    if (score === null || score === undefined || Number.isNaN(Number(score))){
+      // placeholder center text
+      ctx.font = '12px sans-serif'; ctx.fillStyle = '#666'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('N/A', cx, cy);
+      return;
+    }
+    const p = Math.max(0, Math.min(1, Number(score)/100));
+    const start = -0.5*Math.PI, end = start + p * Math.PI * 2;
+    // gradient stroke
+    const grad = ctx.createLinearGradient(0,0,w,h); grad.addColorStop(0,'#f97316'); grad.addColorStop(1,'#4caf50');
+    ctx.beginPath(); ctx.arc(cx,cy,r,start,end); ctx.strokeStyle = grad; ctx.lineWidth = 8; ctx.lineCap = 'round'; ctx.stroke();
+  ctx.font = 'bold 16px sans-serif'; ctx.fillStyle = '#222'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText((Number(score).toFixed(1)), cx, cy);
+  }catch(e){ console.warn('drawDonutOnCanvas', e); }
+}
+
+// helper: find the NBest-containing root object for various Azure response shapes
+function pickNBestRoot(obj){
+  if (!obj || typeof obj !== 'object') return null;
+  if (Array.isArray(obj.NBest) && obj.NBest.length) return obj;
+  if (obj.result && Array.isArray(obj.result.NBest) && obj.result.NBest.length) return obj.result;
+  if (obj.result && obj.result.result && Array.isArray(obj.result.result.NBest) && obj.result.result.NBest.length) return obj.result.result;
+  // sometimes the payload is already the NBest array
+  if (Array.isArray(obj) && obj.length && obj[0] && (obj[0].Words || obj[0].Word)) return { NBest: obj };
+  // fallbacks
+  if (obj.NBest && Array.isArray(obj.NBest)) return obj;
+  return null;
+}
+
+</script>
+
+</body>
+</html>
