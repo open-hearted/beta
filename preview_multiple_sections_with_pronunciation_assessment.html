@@ -746,12 +746,13 @@ function setupBlock(idx, sentence) {
           if (timerEl) timerEl.textContent = `${mm}:${ss}`;
         }, 250);
       }catch(e){}
+      if (recStatus) recStatus.textContent = '録音中';
       if (recToggleBtn) {
         recToggleBtn.dataset.state = 'recording';
         recToggleBtn.textContent = '停止';
         recToggleBtn.title = '録音停止';
       }
-      resultBox.textContent = '録音中...';
+      if (resultBox) resultBox.textContent = '';
     } catch(e){
       resultBox.textContent = '録音開始失敗: '+e.message;
       _recorder = null;
