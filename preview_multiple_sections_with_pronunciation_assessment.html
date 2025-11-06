@@ -139,13 +139,8 @@ function updateEntrySummary(idx) {
   }
 
   if (snippetEl) {
-    const source = transVal;
-    if (source) {
-      const normalized = source.replace(/\s+/g, " ").trim();
-      snippetEl.textContent = normalized.length > 60 ? `${normalized.slice(0, 60)}…` : normalized;
-    } else {
-      snippetEl.textContent = "翻訳なし";
-    }
+    snippetEl.textContent = '';
+    snippetEl.style.display = 'none';
   }
 }
 
@@ -156,7 +151,7 @@ sentences.forEach((sentence, idx) => {
   <details class="entry" data-section="${idx}">
     <summary>
       <span class="entry-title">セクション ${idx + 1}</span>
-      <span class="entry-snippet" id="summarySnippet_${idx}">メモなし</span>
+  <span class="entry-snippet" id="summarySnippet_${idx}" style="display:none;"></span>
       <span class="entry-status" id="status${idx}">⬜ 入力なし</span>
     </summary>
     <div class="entry-body">
