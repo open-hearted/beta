@@ -159,16 +159,18 @@ sentences.forEach((sentence, idx) => {
       <div class="evaluation-block listening-block">
         <div class="evaluation-header">
           <h3 class="evaluation-title">リスニング評価</h3>
-          <button id="note_${idx}_compare">ChatGPTでリスニング評価</button>
+          <button id="note_${idx}_compare">リスニング評価</button>
         </div>
         <textarea id="note_${idx}_input" placeholder="聞こえた文を入力…"></textarea>
         <div class="feedback" id="feedback_${idx}"></div>
       </div>
       <div class="evaluation-block translation-block">
-        <h3 class="evaluation-title">翻訳評価</h3>
+        <div class="evaluation-header">
+          <h3 class="evaluation-title">翻訳評価</h3>
+          <button id="trans_${idx}_compare">翻訳評価</button>
+        </div>
         <textarea id="trans_${idx}_input" placeholder="日本語訳を入力…"></textarea>
         <div class="feedback" id="trans_feedback_${idx}"></div>
-        <button id="trans_${idx}_compare">ChatGPTで翻訳評価</button>
       </div>
       <h3>発音評価</h3>
       <textarea id="refText_${idx}" class="ref-text">${sentence}</textarea>
