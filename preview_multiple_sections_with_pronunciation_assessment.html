@@ -517,7 +517,7 @@ function setupBlock(idx, sentence) {
 
   // upload blob/file to /api/upload with prefix per section
   async function uploadFileAndAssess(fileBlob){
-    resultBox.textContent = 'アップロード中...';
+  resultBox.textContent = 'アップロード中...';
     const fd = new FormData();
     fd.append('file', new File([fileBlob], fileBlob.name || `rec_${Date.now()}.wav`, { type: fileBlob.type || 'audio/wav' }));
     const prefix = PAGE_PREFIX + `section_${idx}/`;
@@ -527,7 +527,22 @@ function setupBlock(idx, sentence) {
       // disable submit during upload/assess
       try { document.getElementById(`submitBtn_${idx}`).disabled = true; } catch(e){}
       uploadResp = await fetch(API_UPLOAD, { method:'POST', body: fd });
-      if (!uploadResp.ok) throw new Error('upload failed ' + uploadResp.status);
+      if (!uploadResp.ok) {
+        let detail = '';
+        try {
+          const errText = await uploadResp.text();
+          if (errText) {
+            try {
+              const parsed = JSON.parse(errText);
+              detail = parsed.detail || parsed.error || errText;
+            } catch {
+              detail = errText;
+            }
+          }
+        } catch {}
+        const message = detail ? `upload failed ${uploadResp.status}: ${detail}` : `upload failed ${uploadResp.status}`;
+        throw new Error(message);
+      }
       const upj = await uploadResp.json();
       const audioUrl = upj.presignedUrl || upj.url;
       const s3Key = upj.key;
