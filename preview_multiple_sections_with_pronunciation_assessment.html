@@ -48,6 +48,8 @@
   .evaluation-title { margin: 0; font-size: 1.1rem; color: #374151; }
   .evaluation-header button { margin: 0 0 0 auto; }
   .pronunciation-controls { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+  .pronunciation-controls .rec-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 0.65rem 1.1rem; background-color: #2563eb; }
+  .pronunciation-controls .rec-toggle.recording { background-color: #dc2626; }
   .pronunciation-controls .pronunciation-submit { margin-left: auto; }
     #scoreBlock { margin: 1rem 0; text-align: center; }
     #wordsBlock { margin-top: 1rem; }
@@ -411,7 +413,7 @@ function buildSections() {
           <button class="collapsible script-toggle secondary-script">📜 スクリプトを表示</button>
           <div class="content script-content secondary-script-content" style="display:none;"></div>
           <div class="pronunciation-controls">
-            <button id="recToggle_${idx}" title="録音開始">録音</button>
+            <button id="recToggle_${idx}" class="rec-toggle">🎙️ 録音開始</button>
             <span id="recStatus_${idx}" style="margin-left:8px;color:#4b5563;font-size:0.95rem;"></span>
             <span id="recTimer_${idx}" style="margin-left:8px;color:#b91c1c;font-weight:600;"></span>
             <button id="submitBtn_${idx}" class="pronunciation-submit" disabled>発音評価を実行</button>
@@ -623,12 +625,12 @@ function setupBlock(idx, sentence) {
     disposePendingPreview();
     lastRecordedFile = null;
     if (submitBtn) submitBtn.disabled = true;
-  if (recStatus) recStatus.textContent = '';
+    if (recStatus) recStatus.textContent = '';
     resultBox.textContent = '録音を削除しました。';
     if (recToggleBtn) {
       recToggleBtn.dataset.state = 'idle';
-      recToggleBtn.textContent = '録音';
-      recToggleBtn.title = '録音開始';
+      recToggleBtn.textContent = '🎙️ 録音開始';
+      recToggleBtn.classList.remove('recording');
     }
     updateEntrySummary(idx);
   }
@@ -750,17 +752,17 @@ function setupBlock(idx, sentence) {
       if (recStatus) recStatus.textContent = '録音中';
       if (recToggleBtn) {
         recToggleBtn.dataset.state = 'recording';
-        recToggleBtn.textContent = '停止';
-        recToggleBtn.title = '録音停止';
+        recToggleBtn.textContent = '⏹️ 録音停止';
+        recToggleBtn.classList.add('recording');
       }
       if (resultBox) resultBox.textContent = '';
     } catch(e){
-      resultBox.textContent = '録音開始失敗: '+e.message;
+      if (resultBox) resultBox.textContent = '録音開始失敗: '+e.message;
       _recorder = null;
       if (recToggleBtn) {
         recToggleBtn.dataset.state = 'idle';
-        recToggleBtn.textContent = '録音';
-        recToggleBtn.title = '録音開始';
+        recToggleBtn.textContent = '🎙️ 録音開始';
+        recToggleBtn.classList.remove('recording');
       }
     } finally {
       if (recToggleBtn) recToggleBtn.disabled = false;
@@ -803,15 +805,17 @@ function setupBlock(idx, sentence) {
       if (recToggleBtn) {
         recToggleBtn.disabled = false;
         recToggleBtn.dataset.state = 'idle';
-        recToggleBtn.textContent = '録音';
-        recToggleBtn.title = '録音開始';
+        recToggleBtn.textContent = '🎙️ 録音開始';
+        recToggleBtn.classList.remove('recording');
       }
     }
   }
 
   if (recToggleBtn) {
     let toggleBusy = false;
-    recToggleBtn.dataset.state = 'idle';
+  recToggleBtn.dataset.state = 'idle';
+  recToggleBtn.classList.remove('recording');
+  recToggleBtn.textContent = '🎙️ 録音開始';
     recToggleBtn.addEventListener('click', async () => {
       if (toggleBusy) return;
       toggleBusy = true;
