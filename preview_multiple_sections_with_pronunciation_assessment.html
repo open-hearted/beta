@@ -781,6 +781,19 @@ function addRecordingCard(sectionIdx, meta){
     // default: hollow circle placeholder
     left.appendChild(canvas);
 
+    const leftControls = document.createElement('div');
+    leftControls.style = 'display:flex;flex-direction:column;align-items:center;gap:10px;min-width:72px;';
+  leftControls.appendChild(canvas);
+  const toggleWordsBtn = document.createElement('button');
+  toggleWordsBtn.textContent = '単語';
+  toggleWordsBtn.className = 'toggle-words-btn';
+  toggleWordsBtn.disabled = true;
+  toggleWordsBtn.style = 'width:100%;box-sizing:border-box;';
+  leftControls.appendChild(toggleWordsBtn);
+
+  left.innerHTML = '';
+  left.appendChild(leftControls);
+
     // right: inline row with audio + controls (donut, audio, buttons on one line)
     const right = document.createElement('div'); right.className = 'right';
     const inlineRow = document.createElement('div'); inlineRow.style = 'display:flex;align-items:center;gap:12px;';
@@ -794,9 +807,8 @@ function addRecordingCard(sectionIdx, meta){
       a = document.createElement('div'); a.textContent = '（音声なし）'; a.style.color = '#666';
     }
   const controls = document.createElement('div'); controls.style = 'display:flex;gap:8px;align-items:center;flex:0 0 auto;';
-  const toggleWordsBtn = document.createElement('button'); toggleWordsBtn.textContent = '単語'; toggleWordsBtn.className = 'toggle-words-btn'; toggleWordsBtn.disabled = true;
     const delBtn = document.createElement('button'); delBtn.textContent = '削除'; delBtn.style.background = '#e53e3e';
-    controls.appendChild(toggleWordsBtn); controls.appendChild(delBtn);
+    controls.appendChild(delBtn);
     inlineRow.appendChild(a); inlineRow.appendChild(controls);
     right.appendChild(inlineRow);
 
