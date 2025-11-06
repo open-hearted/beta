@@ -173,7 +173,7 @@ sentences.forEach((sentence, idx) => {
         <div class="feedback" id="trans_feedback_${idx}"></div>
       </div>
       <h3>発音評価</h3>
-      <button class="collapsible ref-toggle">📝 お手本を表示</button>
+  <button class="collapsible ref-toggle">� お手本を表示</button>
       <div class="content ref-content" style="display:none;">
         <textarea id="refText_${idx}" class="ref-text">${sentence}</textarea>
       </div>
@@ -360,7 +360,7 @@ function setupBlock(idx, sentence) {
     refToggleBtn.addEventListener("click", () => {
       const isVisible = refContentEl.style.display === "block";
       refContentEl.style.display = isVisible ? "none" : "block";
-      refToggleBtn.textContent = isVisible ? "📝 お手本を表示" : "📝 お手本を閉じる";
+  refToggleBtn.textContent = isVisible ? "� お手本を表示" : "� お手本を閉じる";
     });
   }
   // 発音評価: 録音 or ファイル選択 -> S3アップロード -> Azure 評価 -> サイドカー保存 -> 表示
