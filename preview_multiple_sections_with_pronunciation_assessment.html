@@ -633,13 +633,11 @@ function setupBlock(idx, sentence) {
       return;
     }
     disposePendingPreview();
-    const sizeLabel = fmtBytes(file.size) || 'サイズ不明';
     pendingPreview.innerHTML = `
       <div class="pending-preview-row">
         <audio controls src="${url}"></audio>
         <button type="button" class="pending-preview-delete">削除</button>
       </div>
-      <div class="pending-preview-note">${sizeLabel} ／ 録音内容を確認できます。</div>
     `;
     pendingPreview.style.display = 'block';
     pendingPreviewUrl = url;
