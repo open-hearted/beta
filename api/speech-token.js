@@ -1,8 +1,12 @@
 // Vercel サーバーレス関数: Azure Speech の短期トークンを返す
 // 必要な環境変数: AZURE_SPEECH_KEY, AZURE_REGION
 
+const { requireAuth } = require('./_auth');
+
 module.exports = async (req, res) => {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+  const user = requireAuth(req, res);
+  if (!user) return;
   const key = process.env.AZURE_SPEECH_KEY;
   const region = process.env.AZURE_REGION;
   if (!key || !region) return res.status(500).json({ error: 'Server misconfiguration' });

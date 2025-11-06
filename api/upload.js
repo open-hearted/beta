@@ -8,6 +8,7 @@ const path = require('path');
 const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command, HeadObjectCommand } = require('@aws-sdk/client-s3');
 const crypto = require('crypto');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+const { requireAuth, ensureUserScopedPrefix, ensureUserScopedKey, keyBelongsToUser } = require('./_auth');
 
 module.exports.config = { api: { bodyParser: false } };
 
@@ -62,16 +63,23 @@ function sanitizePrefix(p) {
 }
 
 module.exports = async (req, res) => {
+  const user = requireAuth(req, res);
+  if (!user) return;
+  const safeUserId = user.safeId;
+
   if (!BUCKET) return res.status(500).json({ error: 'Missing S3 bucket env (AWS_S3_BUCKET or BUCKET_NAME)' });
 
   if (req.method === 'GET') {
     let requestedPrefix = (req.query && req.query.prefix) ? String(req.query.prefix) : null;
-    const prefix = sanitizePrefix(requestedPrefix);
+    const prefix = ensureUserScopedPrefix(safeUserId, sanitizePrefix(requestedPrefix));
     const singleKey = req.query && req.query.key ? String(req.query.key) : null;
     try {
       if (singleKey) {
-        if (!singleKey.startsWith(prefix)) return res.status(403).json({ error: 'key not under prefix' });
-        const presigned = await getSignedUrl(s3, new GetObjectCommand({ Bucket: BUCKET, Key: singleKey }), { expiresIn: 600 });
+        const scopedKey = ensureUserScopedKey(safeUserId, singleKey);
+        if (scopedKey !== singleKey || !keyBelongsToUser(safeUserId, scopedKey)) {
+          return res.status(403).json({ error: 'key not permitted' });
+        }
+        const presigned = await getSignedUrl(s3, new GetObjectCommand({ Bucket: BUCKET, Key: scopedKey }), { expiresIn: 600 });
         return res.status(200).json({ key: singleKey, presignedUrl: presigned, prefixUsed: prefix });
       }
       const out = await list(prefix);
@@ -79,6 +87,7 @@ module.exports = async (req, res) => {
       const items = [];
       for (const o of contents) {
         if (!o.Key || !/\.wav$/i.test(o.Key)) continue;
+        if (!keyBelongsToUser(safeUserId, o.Key)) continue;
         let presignedUrl = null;
         try {
           presignedUrl = await getSignedUrl(s3, new GetObjectCommand({ Bucket: BUCKET, Key: o.Key }), { expiresIn: 600 });
@@ -100,11 +109,12 @@ module.exports = async (req, res) => {
   if (req.method === 'DELETE') {
     const { key, prefix: qp } = req.query;
     if (!key) return res.status(400).json({ error: 'key query required' });
-    const prefix = sanitizePrefix(qp || key.split('/').slice(0,-1).join('/')+'/');
-    if (!key.startsWith(prefix)) return res.status(403).json({ error: 'key not under prefix' });
+    const prefix = ensureUserScopedPrefix(safeUserId, sanitizePrefix(qp || key.split('/').slice(0,-1).join('/')+'/'));
+    const scopedKey = ensureUserScopedKey(safeUserId, key);
+    if (!keyBelongsToUser(safeUserId, scopedKey)) return res.status(403).json({ error: 'key not under prefix' });
     try {
-      await del(key);
-      return res.status(200).json({ deleted: key });
+      await del(scopedKey);
+      return res.status(200).json({ deleted: scopedKey });
     } catch (e) {
       return res.status(500).json({ error: 'Delete failed', detail: e.message });
     }
@@ -128,16 +138,17 @@ module.exports = async (req, res) => {
       const buf = await fs.promises.readFile(filePath);
       const originalName = file.originalFilename || file.name || 'recording.wav';
       const ext = path.extname(originalName) || '.wav';
-      const rawPrefix = Array.isArray(fields.prefix)?fields.prefix[0]:fields.prefix;
-      const prefix = sanitizePrefix(rawPrefix);
-      const key = `${prefix}${Date.now()}_${Math.random().toString(36).slice(2,8)}${ext}`;
-      await put(key, buf, file.mimetype || 'audio/wav');
+  const rawPrefix = Array.isArray(fields.prefix)?fields.prefix[0]:fields.prefix;
+  const prefix = ensureUserScopedPrefix(safeUserId, sanitizePrefix(rawPrefix));
+  const generatedName = `${Date.now()}_${Math.random().toString(36).slice(2,8)}${ext}`;
+  const key = ensureUserScopedKey(safeUserId, `${prefix}${generatedName}`);
+  await put(key, buf, file.mimetype || 'audio/wav');
       try { await fs.promises.unlink(filePath); } catch {}
       const safeKey = key.split('/').map(encodeURIComponent).join('/');
       const url = `https://${BUCKET}.s3.${REGION}.amazonaws.com/${safeKey}`;
       let presignedUrl = null;
       try { presignedUrl = await getSignedUrl(s3, new GetObjectCommand({ Bucket: BUCKET, Key: key }), { expiresIn: 600 }); } catch {}
-      return res.status(200).json({ message: 'ok', key, url, presignedUrl, bucket: BUCKET, prefixUsed: prefix });
+  return res.status(200).json({ message: 'ok', key, url, presignedUrl, bucket: BUCKET, prefixUsed: prefix });
     } catch (e) {
       return res.status(500).json({ error: 'Upload failed', detail: e.message });
     }

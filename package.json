@@ -6,12 +6,12 @@
     "node": "22.x"
   },
   "dependencies": {
+    "bcryptjs": "^2.4.3",
     "node-fetch": "2.6.7",
     "@aws-sdk/client-s3": "^3.596.0",
     "@aws-sdk/s3-request-presigner": "^3.596.0",
     "formidable": "^2.1.2"
-  }
-  ,
+  },
   "scripts": {
     "dev": "node dev-server.js"
   }

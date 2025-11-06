@@ -9,6 +9,7 @@ const {
   GetObjectCommand
 } = require('@aws-sdk/client-s3');
 const { Readable } = require('node:stream');
+const { requireAuth, ensureUserScopedKey, ensureUserScopedPrefix, keyBelongsToUser } = require('./_auth');
 
 const s3 = new S3Client({ region: process.env.AWS_REGION });
 const BUCKET = process.env.AWS_S3_BUCKET;
@@ -43,6 +44,9 @@ function summarize(resultJson) {
 
 module.exports = async (req, res) => {
   try {
+    const user = requireAuth(req, res);
+    if (!user) return;
+    const safeUserId = user.safeId;
     if (!BUCKET) return res.status(500).json({ error: 'S3_BUCKET not set' });
 
     // =========================
@@ -53,8 +57,13 @@ module.exports = async (req, res) => {
       const { key } = req.query;
       if (!key) return res.status(400).json({ error: 'key is required' });
 
+      const scopedKey = ensureUserScopedKey(safeUserId, String(key));
+      if (!keyBelongsToUser(safeUserId, scopedKey)) {
+        return res.status(403).json({ error: 'forbidden' });
+      }
+
       const obj = await s3.send(
-        new GetObjectCommand({ Bucket: BUCKET, Key: String(key) })
+        new GetObjectCommand({ Bucket: BUCKET, Key: scopedKey })
       );
       const text = await streamToString(
         obj.Body instanceof Readable ? obj.Body : Readable.from(obj.Body)
@@ -71,16 +80,18 @@ module.exports = async (req, res) => {
       const { prefix } = req.query;
       if (!prefix) return res.status(400).json({ error: 'prefix is required' });
 
+      const scopedPrefix = ensureUserScopedPrefix(safeUserId, String(prefix));
+
       const list = await s3.send(
         new ListObjectsV2Command({
           Bucket: BUCKET,
-          Prefix: String(prefix)
+          Prefix: scopedPrefix
         })
       );
 
       const keys = (list.Contents || [])
         .map(o => o.Key)
-        .filter(k => k && k.endsWith('.assessment.json'));
+        .filter(k => k && k.endsWith('.assessment.json') && keyBelongsToUser(safeUserId, k));
 
       const items = {};
       for (const k of keys) {
@@ -106,10 +117,13 @@ module.exports = async (req, res) => {
       const { key, result, referenceText } = body;
       if (!key || !result) return res.status(400).json({ error: 'key and result are required' });
 
-      const sidecarKey = `${key}.assessment.json`;
+      const scopedKey = ensureUserScopedKey(safeUserId, key);
+      if (!keyBelongsToUser(safeUserId, scopedKey)) return res.status(403).json({ error: 'forbidden' });
+
+      const sidecarKey = `${scopedKey}.assessment.json`;
       const payload = {
         savedAt: new Date().toISOString(),
-        key,
+        key: scopedKey,
         referenceText: referenceText ?? '',
         result
       };

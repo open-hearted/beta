@@ -93,6 +93,227 @@ const audioFolderName = "With $500B US investment, Apple pulling away from China
 const base = `./${encodeURIComponent(audioFolderName)}`;
 const container = document.getElementById("sentence-sections");
 
+const AUTH_STORAGE_KEY = 'ela_auth_session';
+const authState = { token: null, userId: null, expiresAt: 0 };
+let PAGE_PREFIX = '';
+let currentAuthUserId = null;
+
+function sanitizeUserIdForClient(id) {
+  return String(id || '').trim().replace(/[^A-Za-z0-9._-]/g, '_');
+}
+
+function setAuthState(token, userId, expiresAt) {
+  authState.token = token;
+  authState.userId = userId;
+  authState.expiresAt = expiresAt;
+  try {
+    const payload = JSON.stringify({ token, userId, expiresAt });
+    localStorage.setItem(AUTH_STORAGE_KEY, payload);
+  } catch (e) {
+    console.warn('persist auth failed', e);
+  }
+}
+
+function clearAuthState() {
+  authState.token = null;
+  authState.userId = null;
+  authState.expiresAt = 0;
+  try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch {}
+}
+
+function loadAuthFromStorage() {
+  try {
+    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    if (!parsed.token || !parsed.userId || !parsed.expiresAt) return null;
+    return parsed;
+  } catch (e) {
+    console.warn('load auth storage failed', e);
+    return null;
+  }
+}
+
+function getStorageNamespace() {
+  return authState.userId ? `user_${sanitizeUserIdForClient(authState.userId)}` : 'anon';
+}
+
+function namespacedKey(base) {
+  return `${getStorageNamespace()}::${base}`;
+}
+
+function storageGet(baseKey) {
+  try {
+    return localStorage.getItem(namespacedKey(baseKey));
+  } catch (e) {
+    console.warn('storageGet failed', e);
+    return null;
+  }
+}
+
+function storageSet(baseKey, value) {
+  try {
+    localStorage.setItem(namespacedKey(baseKey), value);
+  } catch (e) {
+    console.warn('storageSet failed', e);
+  }
+}
+
+function storageRemove(baseKey) {
+  try {
+    localStorage.removeItem(namespacedKey(baseKey));
+  } catch (e) {
+    console.warn('storageRemove failed', e);
+  }
+}
+
+function computePagePrefix() {
+  const safeUser = sanitizeUserIdForClient(authState.userId || 'anon');
+  let p = location.host + location.pathname;
+  p = p.replace(/[^A-Za-z0-9._\-/]/g, '_');
+  if (!p.endsWith('/')) p += '/';
+  return `${safeUser}/${p}`;
+}
+
+async function validateToken() {
+  if (!authState.token) return false;
+  try {
+    const res = await fetch('/api/auth', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${authState.token}` }
+    });
+    if (!res.ok) return false;
+    const data = await res.json().catch(() => null);
+    if (!data || !data.userId) return false;
+    authState.userId = data.userId;
+    if (data.expiresAt) authState.expiresAt = data.expiresAt;
+    return true;
+  } catch (e) {
+    console.warn('token validation failed', e);
+    return false;
+  }
+}
+
+function buildLoginOverlay() {
+  const overlay = document.createElement('div');
+  overlay.id = 'authOverlay';
+  overlay.style = `position:fixed;inset:0;background:rgba(17,24,39,0.85);display:flex;align-items:center;justify-content:center;z-index:9999;`;
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:12px;padding:24px;max-width:360px;width:92%;box-shadow:0 12px 30px rgba(0,0,0,0.25);">
+      <h2 style="margin:0 0 16px 0;font-size:1.25rem;color:#111827;text-align:center;">ログイン</h2>
+      <form id="authForm" style="display:flex;flex-direction:column;gap:12px;">
+        <label style="display:flex;flex-direction:column;font-size:0.95rem;color:#374151;gap:4px;">
+          ユーザーID
+          <input type="text" name="userId" required style="padding:0.6rem;border:1px solid #d1d5db;border-radius:6px;font-size:1rem;" autocomplete="username" />
+        </label>
+        <label style="display:flex;flex-direction:column;font-size:0.95rem;color:#374151;gap:4px;">
+          パスワード
+          <input type="password" name="password" required style="padding:0.6rem;border:1px solid #d1d5db;border-radius:6px;font-size:1rem;" autocomplete="current-password" />
+        </label>
+        <button type="submit" style="margin-top:4px;background:#2563eb;color:#fff;padding:0.65rem;border-radius:6px;font-size:1rem;font-weight:600;border:none;cursor:pointer;">ログイン</button>
+        <div id="authStatus" style="min-height:1.2rem;font-size:0.9rem;color:#dc2626;text-align:center;"></div>
+      </form>
+    </div>
+  `;
+  return overlay;
+}
+
+async function promptForLogin() {
+  return new Promise(resolve => {
+    const overlay = buildLoginOverlay();
+    document.body.appendChild(overlay);
+    const form = overlay.querySelector('#authForm');
+    const statusEl = overlay.querySelector('#authStatus');
+    let busy = false;
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      if (busy) return;
+      busy = true;
+      statusEl.textContent = '';
+      const formData = new FormData(form);
+      const userId = String(formData.get('userId') || '').trim();
+      const password = String(formData.get('password') || '');
+      if (!userId || !password) {
+        statusEl.textContent = 'ユーザーIDとパスワードを入力してください';
+        busy = false;
+        return;
+      }
+      try {
+        const res = await fetch('/api/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, password })
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          let msg = '認証に失敗しました';
+          try {
+            const parsed = JSON.parse(text);
+            if (parsed && parsed.error) msg = parsed.error;
+          } catch {}
+          statusEl.textContent = msg;
+          busy = false;
+          return;
+        }
+        const data = await res.json();
+        const now = Date.now();
+        const expiresInMs = (data.expiresIn || 3600) * 1000;
+        setAuthState(data.token, data.userId, now + expiresInMs);
+        overlay.remove();
+        resolve(authState);
+      } catch (e) {
+        console.warn('login request failed', e);
+        statusEl.textContent = 'サーバーに接続できませんでした';
+        busy = false;
+      }
+    });
+  });
+}
+
+async function ensureAuthenticated() {
+  const now = Date.now();
+  if (authState.token && authState.expiresAt && authState.expiresAt > now + 5000) {
+    return authState;
+  }
+  const stored = loadAuthFromStorage();
+  if (stored && stored.token) {
+    authState.token = stored.token;
+    authState.userId = stored.userId;
+    authState.expiresAt = stored.expiresAt;
+    if (stored.expiresAt && stored.expiresAt > Date.now() + 5000) {
+      const ok = await validateToken();
+      if (ok) return authState;
+    }
+  }
+  clearAuthState();
+  return promptForLogin();
+}
+
+async function authedFetch(input, init = {}, retry = true) {
+  await ensureAuthenticated();
+  const options = Object.assign({}, init || {});
+  const headers = new Headers(options.headers || {});
+  if (authState.token) headers.set('Authorization', `Bearer ${authState.token}`);
+  options.headers = headers;
+  const response = await fetch(input, options);
+  if (response.status === 401 && retry) {
+    clearAuthState();
+    await ensureAuthenticated();
+    PAGE_PREFIX = computePagePrefix();
+    currentAuthUserId = authState.userId;
+    window.location.reload();
+    throw new Error('セッションが切れたためページを再読み込みします');
+  }
+  return response;
+}
+
+function requireAuthGuard() {
+  if (!authState.userId) {
+    throw new Error('認証情報が見つかりません');
+  }
+}
+
 function updateEntrySummary(idx) {
   const statusEl = document.getElementById(`status${idx}`);
   const snippetEl = document.getElementById(`summarySnippet_${idx}`);
@@ -107,8 +328,8 @@ function updateEntrySummary(idx) {
   let listeningFeedback = "";
   let translationFeedback = "";
   try {
-    listeningFeedback = localStorage.getItem(`chatResponse_listening_${idx}`) || "";
-    translationFeedback = localStorage.getItem(`chatResponse_translation_${idx}`) || "";
+    listeningFeedback = storageGet(`chatResponse_listening_${idx}`) || "";
+    translationFeedback = storageGet(`chatResponse_translation_${idx}`) || "";
   } catch (e) {
     listeningFeedback = "";
     translationFeedback = "";
@@ -146,57 +367,61 @@ function updateEntrySummary(idx) {
 
 const totalSections = sentences.length;
 
-sentences.forEach((sentence, idx) => {
-  const card = document.createElement("div");
-  card.className = "card";
-  card.innerHTML = `
-  <details class="entry" data-section="${idx}">
-    <summary>
-      <span class="entry-title">${idx + 1}/${totalSections}</span>
-      <span class="entry-status" id="status${idx}">聞き取り⬜　和訳⬜　録音⬜</span>
-      <span class="entry-snippet" id="summarySnippet_${idx}" style="display:none;"></span>
-    </summary>
-    <div class="entry-body">
-      <audio controls src="${base}/${idx + 1}.mp3"></audio>
-      <div id="syncStatus_${idx}" style="font-size:0.9rem;color:#4b5563;margin-bottom:10px"></div>
-  <button class="collapsible script-toggle primary-script">📜 スクリプトを表示</button>
-  <div class="content script-content primary-script-content" style="display:none;"></div>
-      <div class="evaluation-block listening-block">
-        <div class="evaluation-header">
-          <h3 class="evaluation-title">リスニング評価</h3>
-          <button id="note_${idx}_compare">リスニング評価</button>
+function buildSections() {
+  requireAuthGuard();
+  container.innerHTML = '';
+  sentences.forEach((sentence, idx) => {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+    <details class="entry" data-section="${idx}">
+      <summary>
+        <span class="entry-title">${idx + 1}/${totalSections}</span>
+        <span class="entry-status" id="status${idx}">聞き取り⬜　和訳⬜　録音⬜</span>
+        <span class="entry-snippet" id="summarySnippet_${idx}" style="display:none;"></span>
+      </summary>
+      <div class="entry-body">
+        <audio controls src="${base}/${idx + 1}.mp3"></audio>
+        <div id="syncStatus_${idx}" style="font-size:0.9rem;color:#4b5563;margin-bottom:10px"></div>
+    <button class="collapsible script-toggle primary-script">📜 スクリプトを表示</button>
+    <div class="content script-content primary-script-content" style="display:none;"></div>
+        <div class="evaluation-block listening-block">
+          <div class="evaluation-header">
+            <h3 class="evaluation-title">リスニング評価</h3>
+            <button id="note_${idx}_compare">リスニング評価</button>
+          </div>
+          <textarea id="note_${idx}_input" placeholder="聞こえた文を入力…"></textarea>
+          <div class="feedback" id="feedback_${idx}"></div>
         </div>
-        <textarea id="note_${idx}_input" placeholder="聞こえた文を入力…"></textarea>
-        <div class="feedback" id="feedback_${idx}"></div>
-      </div>
-      <div class="evaluation-block translation-block">
-        <div class="evaluation-header">
-          <h3 class="evaluation-title">翻訳評価</h3>
-          <button id="trans_${idx}_compare">翻訳評価</button>
+        <div class="evaluation-block translation-block">
+          <div class="evaluation-header">
+            <h3 class="evaluation-title">翻訳評価</h3>
+            <button id="trans_${idx}_compare">翻訳評価</button>
+          </div>
+          <textarea id="trans_${idx}_input" placeholder="日本語訳を入力…"></textarea>
+          <div class="feedback" id="trans_feedback_${idx}"></div>
         </div>
-        <textarea id="trans_${idx}_input" placeholder="日本語訳を入力…"></textarea>
-        <div class="feedback" id="trans_feedback_${idx}"></div>
+    <h3>発音評価</h3>
+        <audio controls src="${base}/${idx + 1}.mp3" class="sample-audio" style="margin-top:0.5rem;margin-bottom:0.5rem;"></audio>
+        <button class="collapsible script-toggle secondary-script">📜 スクリプトを表示</button>
+        <div class="content script-content secondary-script-content" style="display:none;"></div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">
+          <button id="recToggle_${idx}" title="録音開始">録音</button>
+          <span id="recStatus_${idx}" style="margin-left:8px;color:#4b5563;font-size:0.95rem;"></span>
+          <span id="recTimer_${idx}" style="margin-left:8px;color:#b91c1c;font-weight:600;"></span>
+          <button id="submitBtn_${idx}" disabled style="margin-left:auto;">発音評価を実行</button>
+        </div>
+        <pre id="result_${idx}" style="margin:0;padding:0;"></pre>
+        <div id="pendingPreview_${idx}" class="pending-preview"></div>
+        <div id="recList_${idx}" style="margin-top:10px;"></div>
+        <div id="scoreBlock_${idx}"></div>
       </div>
-  <h3>発音評価</h3>
-      <audio controls src="${base}/${idx + 1}.mp3" class="sample-audio" style="margin-top:0.5rem;margin-bottom:0.5rem;"></audio>
-      <button class="collapsible script-toggle secondary-script">📜 スクリプトを表示</button>
-      <div class="content script-content secondary-script-content" style="display:none;"></div>
-      <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">
-        <button id="recToggle_${idx}" title="録音開始">録音</button>
-        <span id="recStatus_${idx}" style="margin-left:8px;color:#4b5563;font-size:0.95rem;"></span>
-        <span id="recTimer_${idx}" style="margin-left:8px;color:#b91c1c;font-weight:600;"></span>
-        <button id="submitBtn_${idx}" disabled style="margin-left:auto;">発音評価を実行</button>
-      </div>
-      <pre id="result_${idx}" style="margin:0;padding:0;"></pre>
-      <div id="pendingPreview_${idx}" class="pending-preview"></div>
-      <div id="recList_${idx}" style="margin-top:10px;"></div>
-      <div id="scoreBlock_${idx}"></div>
-    </div>
-  </details>
-  `;
-  container.appendChild(card);
-  setupBlock(idx, sentence);
-});
+    </details>
+    `;
+    container.appendChild(card);
+    setupBlock(idx, sentence);
+  });
+}
 
 function setupBlock(idx, sentence) {
   const cardRoot = container.children[idx];
@@ -238,12 +463,12 @@ function setupBlock(idx, sentence) {
 
   if (primaryScriptContent) primaryScriptContent.textContent = sentence;
   if (secondaryScriptContent) secondaryScriptContent.textContent = sentence;
-  noteInput.value = localStorage.getItem(`note_${idx}`) || "";
-  transInput.value = localStorage.getItem(`trans_${idx}`) || "";
+  noteInput.value = storageGet(`note_${idx}`) || "";
+  transInput.value = storageGet(`trans_${idx}`) || "";
   try {
-    const savedListenFb = localStorage.getItem(`chatResponse_listening_${idx}`);
+    const savedListenFb = storageGet(`chatResponse_listening_${idx}`);
     if (savedListenFb && feedbackEl) feedbackEl.textContent = savedListenFb;
-    const savedTransFb = localStorage.getItem(`chatResponse_translation_${idx}`);
+    const savedTransFb = storageGet(`chatResponse_translation_${idx}`);
     if (savedTransFb && transFeedbackEl) transFeedbackEl.textContent = savedTransFb;
   } catch (e) {}
   updateEntrySummary(idx);
@@ -260,9 +485,9 @@ function setupBlock(idx, sentence) {
     remoteNoteLoading = true;
     const syncEl = document.getElementById(`syncStatus_${idx}`);
     try {
-      const pagePrefix = (() => { let p = location.host + location.pathname; p = p.replace(/[^A-Za-z0-9._\-/]/g,'_'); if (!p.endsWith('/')) p += '/'; return p; })();
-      const sidecarKey = pagePrefix + `notes_section_${idx}.assessment.json`;
-      const resp = await fetch(`/api/assessment?key=${encodeURIComponent(sidecarKey)}`);
+  const pagePrefix = PAGE_PREFIX;
+  const sidecarKey = pagePrefix + `notes_section_${idx}.assessment.json`;
+  const resp = await authedFetch(`/api/assessment?key=${encodeURIComponent(sidecarKey)}`);
       if (!resp.ok) {
         if (syncEl) syncEl.textContent = 'サーバーにメモはありません';
         return;
@@ -278,10 +503,10 @@ function setupBlock(idx, sentence) {
           if (!notesDirty) {
             noteInput.value = r.listening ?? noteInput.value;
             transInput.value = r.translation ?? transInput.value;
-            try { if (r.listeningFeedback) { feedbackEl.textContent = r.listeningFeedback; localStorage.setItem(`chatResponse_listening_${idx}`, r.listeningFeedback); } } catch (error) {}
-            try { if (r.translationFeedback) { transFeedbackEl.textContent = r.translationFeedback; localStorage.setItem(`chatResponse_translation_${idx}`, r.translationFeedback); } } catch (error) {}
-            localStorage.setItem(`note_${idx}`, noteInput.value.trim());
-            localStorage.setItem(`trans_${idx}`, transInput.value.trim());
+            try { if (r.listeningFeedback) { feedbackEl.textContent = r.listeningFeedback; storageSet(`chatResponse_listening_${idx}`, r.listeningFeedback); } } catch (error) {}
+            try { if (r.translationFeedback) { transFeedbackEl.textContent = r.translationFeedback; storageSet(`chatResponse_translation_${idx}`, r.translationFeedback); } } catch (error) {}
+            storageSet(`note_${idx}`, noteInput.value.trim());
+            storageSet(`trans_${idx}`, transInput.value.trim());
             if (entryEl) entryEl.dataset.dirty = '0';
             notesDirty = false;
           }
@@ -302,7 +527,7 @@ function setupBlock(idx, sentence) {
   // localStorage for in-session persistence; server sync happens when section closes
   noteInput.addEventListener("input", () => {
     const v = noteInput.value.trim();
-    localStorage.setItem(`note_${idx}`, v);
+    storageSet(`note_${idx}`, v);
     notesDirty = true;
     if (entryEl) entryEl.dataset.dirty = '1';
     const syncEl = document.getElementById(`syncStatus_${idx}`);
@@ -311,7 +536,7 @@ function setupBlock(idx, sentence) {
   });
   transInput.addEventListener("input", () => {
     const v = transInput.value.trim();
-    localStorage.setItem(`trans_${idx}`, v);
+    storageSet(`trans_${idx}`, v);
     notesDirty = true;
     if (entryEl) entryEl.dataset.dirty = '1';
     const syncEl = document.getElementById(`syncStatus_${idx}`);
@@ -334,9 +559,9 @@ function setupBlock(idx, sentence) {
       const translation = document.getElementById(`trans_${sectionIdx}_input`).value.trim();
       if (syncEl) syncEl.textContent = '保存中…';
       updateEntrySummary(sectionIdx);
-      const pagePrefix = (() => { let p = location.host + location.pathname; p = p.replace(/[^A-Za-z0-9._\-/]/g,'_'); if (!p.endsWith('/')) p += '/'; return p; })();
-      const body = { key: pagePrefix + `notes_section_${sectionIdx}`, result: { listening, translation, savedAt: new Date().toISOString() }, referenceText: '' };
-      const resp = await fetch('/api/assessment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const pagePrefix = PAGE_PREFIX;
+  const body = { key: pagePrefix + `notes_section_${sectionIdx}`, result: { listening, translation, savedAt: new Date().toISOString() }, referenceText: '' };
+  const resp = await authedFetch('/api/assessment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (resp && resp.ok) {
         if (syncEl) syncEl.textContent = '保存済み';
         notesDirty = false;
@@ -426,21 +651,13 @@ function setupBlock(idx, sentence) {
   const API_ASSESS = '/api/azure-assess';
   const API_ASSESS_SAVE = '/api/assessment';
 
-  // page prefix (used for S3 prefixing to keep recordings per-page)
-  const PAGE_PREFIX = (() => {
-    let p = location.host + location.pathname;
-    p = p.replace(/[^A-Za-z0-9._\-/]/g,'_');
-    if (!p.endsWith('/')) p += '/';
-    return p;
-  })();
-
   async function fetchAssessmentsForSection(force = false) {
     if (assessmentLoading) return;
     if (assessmentsLoaded && !force) return;
     assessmentLoading = true;
     const prefix = PAGE_PREFIX + `section_${idx}/`;
     try {
-      const upl = await fetch('/api/upload?prefix=' + encodeURIComponent(prefix));
+  const upl = await authedFetch('/api/upload?prefix=' + encodeURIComponent(prefix));
       if (!upl.ok) return;
       const ju = await upl.json().catch(() => null);
       if (!ju || !Array.isArray(ju.items)) return;
@@ -451,14 +668,14 @@ function setupBlock(idx, sentence) {
         try {
           let fileUrl = it.presignedUrl || it.url || null;
           if (!fileUrl) {
-            const info = await fetch('/api/upload?key=' + encodeURIComponent(key));
+            const info = await authedFetch('/api/upload?key=' + encodeURIComponent(key));
             if (info.ok) {
               const infoJson = await info.json().catch(() => null);
               fileUrl = infoJson?.item?.presignedUrl || infoJson?.item?.url || fileUrl;
             }
           }
           addRecordingCard(idx, { key, url: fileUrl, fileName: key.split('/').pop(), size: it.size || 0, lastModified: it.lastModified || it.LastModified });
-          const assessResp = await fetch('/api/assessment?key=' + encodeURIComponent(key + '.assessment.json'));
+          const assessResp = await authedFetch('/api/assessment?key=' + encodeURIComponent(key + '.assessment.json'));
           if (!assessResp.ok) continue;
           const detail = await assessResp.json().catch(() => null);
           const payload = detail?.item;
@@ -627,7 +844,7 @@ function setupBlock(idx, sentence) {
     try {
       // disable submit during upload/assess
       if (submitBtn) submitBtn.disabled = true;
-      uploadResp = await fetch(API_UPLOAD, { method:'POST', body: fd });
+  uploadResp = await authedFetch(API_UPLOAD, { method:'POST', body: fd });
       if (!uploadResp.ok) {
         let detail = '';
         try {
@@ -653,11 +870,11 @@ function setupBlock(idx, sentence) {
   resultBox.textContent = 'アップロード完了。評価中…';
       // call azure-assess
     const referenceText = sentence;
-    const assessResp = await fetch(API_ASSESS, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ audioUrl, referenceText, language: 'en-US' }) });
+  const assessResp = await authedFetch(API_ASSESS, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ audioUrl, referenceText, language: 'en-US' }) });
       if (!assessResp.ok) { const t = await assessResp.text(); throw new Error('azure-assess failed: '+assessResp.status+' '+t); }
       const assessJson = await assessResp.json();
       // save assessment sidecar: key should be s3Key
-    const saveResp = await fetch(API_ASSESS_SAVE, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ key: s3Key, result: assessJson, referenceText }) });
+  const saveResp = await authedFetch(API_ASSESS_SAVE, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ key: s3Key, result: assessJson, referenceText }) });
       if (!saveResp.ok) { const t = await saveResp.text(); throw new Error('save assessment failed: '+saveResp.status+' '+t); }
       resultBox.textContent = '評価完了・保存済み';
       // render results
@@ -696,22 +913,22 @@ async function callChatGPT(userText, refText, targetEl, isTranslation = false, i
   try {
     // Call server-side proxy which uses OPENAI_API_KEY from environment
     const body = { model: 'gpt-4', messages: [ { role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt } ] };
-    const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const res = await authedFetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!res.ok) throw new Error(`Error: ${res.status} ${res.statusText}`);
     const data = await res.json();
     const feedback = data.choices?.[0]?.message?.content || "⚠️ 応答がありません。";
     targetEl.textContent = feedback;
     const key = isTranslation ? `chatResponse_translation_${idx}` : `chatResponse_listening_${idx}`;
-    try { localStorage.setItem(key, feedback); } catch(e){}
+  try { storageSet(key, feedback); } catch(e){}
     // persist to server sidecar for cross-device reload
     try{
       const listening = document.getElementById(`note_${idx}_input`)?.value.trim() || '';
       const translation = document.getElementById(`trans_${idx}_input`)?.value.trim() || '';
-      const listeningFeedback = isTranslation ? (localStorage.getItem(`chatResponse_listening_${idx}`) || '') : (isTranslation ? '' : feedback);
-      const translationFeedback = isTranslation ? feedback : (localStorage.getItem(`chatResponse_translation_${idx}`) || '');
+  const listeningFeedback = isTranslation ? (storageGet(`chatResponse_listening_${idx}`) || '') : (isTranslation ? '' : feedback);
+  const translationFeedback = isTranslation ? feedback : (storageGet(`chatResponse_translation_${idx}`) || '');
       const pagePrefixLocal = (() => { let p = location.host + location.pathname; p = p.replace(/[^A-Za-z0-9._\-/]/g,'_'); if (!p.endsWith('/')) p += '/'; return p; })();
       const body2 = { key: pagePrefixLocal + `notes_section_${idx}`, result: { listening, translation, listeningFeedback, translationFeedback, savedAt: new Date().toISOString() }, referenceText: '' };
-      fetch('/api/assessment', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body2) }).catch(e=>console.warn('persist chat feedback failed', e));
+  authedFetch('/api/assessment', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body2) }).catch(e=>console.warn('persist chat feedback failed', e));
     }catch(e){ console.warn('persist chat feedback outer failed', e); }
     updateEntrySummary(idx);
   } catch (e) {
@@ -868,7 +1085,7 @@ function addRecordingCard(sectionIdx, meta){
     delBtn.onclick = async ()=>{
       if (!meta.key) { wrapper.remove(); updateEntrySummary(sectionIdx); return; }
       if (!confirm('この録音を削除しますか？')) return;
-      const resp = await fetch('/api/upload?key=' + encodeURIComponent(meta.key), { method: 'DELETE' });
+  const resp = await authedFetch('/api/upload?key=' + encodeURIComponent(meta.key), { method: 'DELETE' });
       if (resp.ok) { wrapper.remove(); updateEntrySummary(sectionIdx); } else { alert('削除に失敗しました'); }
     };
     toggleWordsBtn.onclick = ()=>{
@@ -994,6 +1211,17 @@ function pickNBestRoot(obj){
   if (obj.NBest && Array.isArray(obj.NBest)) return obj;
   return null;
 }
+
+(async function bootstrap(){
+  try {
+    await ensureAuthenticated();
+    currentAuthUserId = authState.userId;
+    PAGE_PREFIX = computePagePrefix();
+    buildSections();
+  } catch (e) {
+    console.error('initialization failed', e);
+  }
+})();
 
 </script>
 

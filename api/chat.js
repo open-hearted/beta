@@ -4,6 +4,8 @@
 // - このファイルをデプロイすると、クライアントは /api/chat を呼ぶだけで済み、
 //   クライアント側に API キーを置く必要がなくなります。
 
+const { requireAuth } = require('./_auth');
+
 // Use global fetch available in Node 18+; if not available, attempt a dynamic import fallback
 let localFetch = global.fetch;
 try {
@@ -23,6 +25,9 @@ module.exports = async (req, res) => {
     return;
   }
 
+  const user = requireAuth(req, res);
+  if (!user) return;
+
   const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
   if (!OPENAI_API_KEY) {
     res.status(500).json({ error: 'OPENAI_API_KEY is not configured in environment' });
@@ -30,7 +35,7 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const body = req.body || {};
+  const body = req.body || {};
 
     // 基本的なバリデーション
     if (!body.model || !body.messages) {

@@ -2,8 +2,12 @@
 // Env vars: AZURE_SPEECH_KEY, AZURE_REGION
 // POST body: { audioUrl, referenceText?, language? }
 
+const { requireAuth } = require('./_auth');
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
+  const user = requireAuth(req, res);
+  if (!user) return;
   const key = process.env.AZURE_SPEECH_KEY;
   const region = process.env.AZURE_REGION;
   if (!key || !region) return res.status(500).json({ error: 'Azure speech env missing' });
