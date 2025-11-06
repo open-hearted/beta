@@ -38,10 +38,11 @@
   .content { display: none; background-color: #fafafa; padding: 1rem; border: 1px solid #ccc; margin-top: 0.5rem; border-radius: 6px; white-space: pre-wrap; }
   .feedback { background: #fff; border-left: 4px solid #4caf50; padding: 0.5rem; margin-top: 0.5rem; font-size: 0.95rem; }
   .pending-preview { display: none; margin-top: 0.75rem; padding: 0.75rem; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; }
-  .pending-preview audio { width: 100%; }
-  .pending-preview-controls { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-top: 0.5rem; font-size: 0.95rem; color: #4b5563; }
-  .pending-preview-controls button { background-color: #ef4444; }
-  .pending-preview-controls button:hover { background-color: #dc2626; }
+  .pending-preview audio { flex: 1 1 auto; width: auto; min-width: 180px; }
+  .pending-preview-row { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+  .pending-preview-note { margin-top: 0.5rem; font-size: 0.95rem; color: #4b5563; }
+  .pending-preview button { background-color: #ef4444; }
+  .pending-preview button:hover { background-color: #dc2626; }
   .evaluation-block { background: #f9fafb; border: 1px solid #d1d5db; border-radius: 10px; padding: 1rem; margin-top: 1rem; }
   .evaluation-header { display: flex; align-items: center; gap: 0.75rem; margin: 0 0 0.5rem 0; }
   .evaluation-title { margin: 0; font-size: 1.1rem; color: #374151; }
@@ -408,11 +409,11 @@ function setupBlock(idx, sentence) {
     disposePendingPreview();
     const sizeLabel = fmtBytes(file.size) || 'サイズ不明';
     pendingPreview.innerHTML = `
-      <audio controls src="${url}"></audio>
-      <div class="pending-preview-controls">
-        <span>${sizeLabel} ／ 録音内容を確認できます。</span>
+      <div class="pending-preview-row">
+        <audio controls src="${url}"></audio>
         <button type="button" class="pending-preview-delete">削除</button>
       </div>
+      <div class="pending-preview-note">${sizeLabel} ／ 録音内容を確認できます。</div>
     `;
     pendingPreview.style.display = 'block';
     pendingPreviewUrl = url;
