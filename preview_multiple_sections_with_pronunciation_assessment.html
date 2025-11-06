@@ -624,7 +624,6 @@ function setupBlock(idx, sentence) {
   const sidecarKey = pagePrefix + `notes_section_${idx}.assessment.json`;
   const resp = await authedFetch(`/api/assessment?key=${encodeURIComponent(sidecarKey)}`);
       if (!resp.ok) {
-        if (syncEl) syncEl.textContent = 'サーバーにメモはありません';
         return;
       }
       const j = await resp.json().catch((error) => {
@@ -647,8 +646,6 @@ function setupBlock(idx, sentence) {
           }
           if (syncEl) syncEl.textContent = 'サーバーから読み込みました';
         }
-      } else if (syncEl) {
-        syncEl.textContent = 'サーバーにメモはありません';
       }
     } catch (error) {
       console.warn('fetchRemoteNotes failed', error);
