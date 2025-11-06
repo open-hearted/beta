@@ -68,6 +68,7 @@
 <body>
 
 <h1>リスニング・翻訳・発音評価（統合）</h1>
+<audio controls src="" id="fullAudio" style="width: 100%; max-width: 800px; margin: 0 auto 2rem auto; display: block;"></audio>
 <div id="sentence-sections"></div>
 
 <script>
@@ -96,6 +97,12 @@ const audioFolderName = "With $500B US investment, Apple pulling away from China
 // Encode folder name so static hosts serve files even with spaces/symbols in path
 const base = `./${encodeURIComponent(audioFolderName)}`;
 const container = document.getElementById("sentence-sections");
+
+// Set up full audio player
+const fullAudio = document.getElementById("fullAudio");
+if (fullAudio) {
+  fullAudio.src = `${base}/full_audio.mp3`;
+}
 
 const AUTH_STORAGE_KEY = 'ela_auth_session';
 const authState = { token: null, userId: null, expiresAt: 0 };
