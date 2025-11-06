@@ -176,6 +176,7 @@ sentences.forEach((sentence, idx) => {
         <div class="feedback" id="trans_feedback_${idx}"></div>
       </div>
   <h3>発音評価</h3>
+      <audio controls src="${base}/${idx + 1}.mp3" class="sample-audio" style="margin-top:0.5rem;margin-bottom:0.5rem;"></audio>
       <button class="collapsible script-toggle secondary-script">📜 スクリプトを表示</button>
       <div class="content script-content secondary-script-content" style="display:none;"></div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">
