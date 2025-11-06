@@ -480,6 +480,9 @@ function setupBlock(idx, sentence) {
     if (savedTransFb && transFeedbackEl) transFeedbackEl.textContent = savedTransFb;
   } catch (e) {}
   updateEntrySummary(idx);
+  setTimeout(() => {
+    fetchAssessmentsForSection().catch(err => console.warn('prefetch assessments failed', err));
+  }, idx * 150);
 
   let remoteNoteLoading = false;
   let notesLoaded = false;
