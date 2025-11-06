@@ -782,8 +782,8 @@ function setupBlock(idx, sentence) {
       lastRecordedFile = file;
   const previewUrl = URL.createObjectURL(blob);
   showPendingPreview(file, previewUrl);
-      resultBox.textContent = '録音完了: ' + (file.size? fmtBytes(file.size) : '不明');
-      if (recStatus) recStatus.textContent = `録音完了 (${fmtBytes(file.size)})`;
+  resultBox.textContent = '録音完了';
+  if (recStatus) recStatus.textContent = '録音完了';
       // stop timer and enable submit
       try{ if (recorderRef.timerId) clearInterval(recorderRef.timerId); const tEl = document.getElementById(`recTimer_${idx}`); if (tEl) tEl.textContent = ''; }catch(e){}
   if (submitBtn) submitBtn.disabled = false;
