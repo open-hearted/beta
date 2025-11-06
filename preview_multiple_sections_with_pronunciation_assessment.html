@@ -53,7 +53,7 @@
     th { background: #f8f9fa; }
   /* recording card layout */
   .rec-card { display:flex; gap:12px; align-items:flex-start; background: #fff; border-radius:8px; padding:8px; width:100%; box-sizing:border-box; flex-wrap:wrap; }
-  .rec-card .left { width:92px; display:flex; align-items:center; justify-content:center; flex:0 0 92px; }
+  .rec-card .left { display:flex; align-items:center; justify-content:flex-start; flex:0 0 auto; gap:10px; }
   .rec-card .right { flex:1 1 auto; min-width:0; }
   .rec-card canvas { background:transparent; }
   .word-table { margin-top:8px; font-size:0.92rem; border-top:1px dashed #eee; padding-top:8px; }
@@ -776,23 +776,16 @@ function addRecordingCard(sectionIdx, meta){
     if (meta && meta.key) wrapper.setAttribute('data-s3key', meta.key);
 
     // left: circular score canvas
-    const left = document.createElement('div'); left.className = 'left';
-    const canvas = document.createElement('canvas'); canvas.width = 80; canvas.height = 80; canvas.style.width = '72px'; canvas.style.height = '72px';
-    // default: hollow circle placeholder
-    left.appendChild(canvas);
-
-    const leftControls = document.createElement('div');
-    leftControls.style = 'display:flex;flex-direction:column;align-items:center;gap:10px;min-width:72px;';
-  leftControls.appendChild(canvas);
+  const left = document.createElement('div'); left.className = 'left';
+  left.style = 'display:flex;align-items:center;gap:10px;';
+  const canvas = document.createElement('canvas'); canvas.width = 80; canvas.height = 80; canvas.style.width = '72px'; canvas.style.height = '72px';
   const toggleWordsBtn = document.createElement('button');
   toggleWordsBtn.textContent = '単語';
   toggleWordsBtn.className = 'toggle-words-btn';
   toggleWordsBtn.disabled = true;
-  toggleWordsBtn.style = 'width:100%;box-sizing:border-box;';
-  leftControls.appendChild(toggleWordsBtn);
-
-  left.innerHTML = '';
-  left.appendChild(leftControls);
+  toggleWordsBtn.style = 'min-width:72px;';
+  left.appendChild(canvas);
+  left.appendChild(toggleWordsBtn);
 
     // right: inline row with audio + controls (donut, audio, buttons on one line)
     const right = document.createElement('div'); right.className = 'right';
