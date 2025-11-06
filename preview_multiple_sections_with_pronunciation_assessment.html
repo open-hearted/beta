@@ -80,7 +80,9 @@ const sentences = [
   "As part of its US investment, Apple said it would produce its advanced silicon chips in the Arizona plant of TSMC, the Taiwanese semiconductor firm.",
   "Michelle Quinn, VOA news."
 ];
-const base = "../mp3/With $500B US investment, Apple pulling away from China, analysts say";
+const audioFolderName = "With $500B US investment, Apple pulling away from China, analysts say";
+// Encode folder name so static hosts serve files even with spaces/symbols in path
+const base = `./${encodeURIComponent(audioFolderName)}`;
 const container = document.getElementById("sentence-sections");
 
 function updateEntrySummary(idx) {
