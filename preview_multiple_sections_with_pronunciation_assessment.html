@@ -623,7 +623,7 @@ function setupBlock(idx, sentence) {
     disposePendingPreview();
     lastRecordedFile = null;
     if (submitBtn) submitBtn.disabled = true;
-    if (recStatus) recStatus.textContent = '録音は送信されません';
+  if (recStatus) recStatus.textContent = '';
     resultBox.textContent = '録音を削除しました。';
     if (recToggleBtn) {
       recToggleBtn.dataset.state = 'idle';
