@@ -751,7 +751,7 @@ function setupBlock(idx, sentence) {
           renderEvaluationHistory('translation', idx, mergedTranslation);
         }
 
-        if (syncEl) syncEl.textContent = 'サーバーから読み込みました';
+  if (syncEl) syncEl.textContent = '';
       }
     } catch (error) {
       console.warn('fetchRemoteNotes failed', error);
