@@ -36,7 +36,6 @@
     .collapsible { background-color: #eee; cursor: pointer; padding: 0.5rem 1rem; border: none; font-size: 0.95rem; margin-top: 0.8rem; width: 100%; border-radius: 6px; text-align: left; }
     .collapsible:hover { background-color: #ddd; }
   .content { display: none; background-color: #fafafa; padding: 1rem; border: 1px solid #ccc; margin-top: 0.5rem; border-radius: 6px; white-space: pre-wrap; }
-  .feedback { background: #fff; border-left: 4px solid #4caf50; padding: 0.5rem; margin-top: 0.5rem; font-size: 0.95rem; }
   .pending-preview { display: none; margin-top: 0.75rem; padding: 0.75rem; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; }
   .pending-preview audio { flex: 1 1 auto; width: auto; min-width: 180px; }
   .pending-preview-row { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
@@ -51,6 +50,13 @@
   .pronunciation-controls .rec-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 0.65rem 1.1rem; background-color: #2563eb; }
   .pronunciation-controls .rec-toggle.recording { background-color: #dc2626; }
   .pronunciation-controls .pronunciation-submit { margin-left: auto; }
+  .evaluation-history { margin-top: 0.75rem; border-top: 1px dashed #d1d5db; padding-top: 0.75rem; display: flex; flex-direction: column; gap: 0.75rem; }
+  .history-entry { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
+  .history-entry-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: #6b7280; }
+  .history-row { display: flex; gap: 0.5rem; align-items: flex-start; }
+  .history-label { font-weight: 600; min-width: 3rem; color: #374151; font-size: 0.9rem; }
+  .history-text { flex: 1 1 auto; white-space: pre-wrap; word-break: break-word; font-size: 0.95rem; color: #1f2937; }
+  .history-empty { font-size: 0.9rem; color: #6b7280; }
     #scoreBlock { margin: 1rem 0; text-align: center; }
     #wordsBlock { margin-top: 1rem; }
     table { width: 100%; border-collapse: collapse; text-align: left; }
@@ -177,6 +183,156 @@ function storageRemove(baseKey) {
   } catch (e) {
     console.warn('storageRemove failed', e);
   }
+}
+
+const EVAL_HISTORY_LIMIT = 20;
+
+function evaluationHistoryKey(type, idx) {
+  return `${type}History_${idx}`;
+}
+
+function sanitizeHistoryEntry(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  const input = String(entry.input ?? entry.listen ?? entry.student ?? '').trim();
+  const feedback = String(entry.feedback ?? entry.result ?? entry.response ?? '').trim();
+  if (!input && !feedback) return null;
+  const rawTs = entry.createdAt || entry.savedAt || entry.timestamp || entry.time;
+  let iso = null;
+  if (rawTs) {
+    const parsed = new Date(rawTs);
+    if (!Number.isNaN(parsed.getTime())) iso = parsed.toISOString();
+  }
+  if (!iso) iso = new Date().toISOString();
+  return { input, feedback, createdAt: iso };
+}
+
+function loadEvaluationHistory(type, idx) {
+  const raw = storageGet(evaluationHistoryKey(type, idx));
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map(sanitizeHistoryEntry)
+        .filter(Boolean)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }
+  } catch (e) {
+    console.warn('loadEvaluationHistory parse failed', e);
+  }
+  return [];
+}
+
+function saveEvaluationHistory(type, idx, history) {
+  const clean = Array.isArray(history)
+    ? history.map(sanitizeHistoryEntry).filter(Boolean)
+    : [];
+  try {
+    storageSet(evaluationHistoryKey(type, idx), JSON.stringify(clean.slice(0, EVAL_HISTORY_LIMIT)));
+  } catch (e) {
+    console.warn('saveEvaluationHistory failed', e);
+  }
+}
+
+function mergeHistoryEntries(primaryEntries, secondaryEntries = []) {
+  const merged = [];
+  const seen = new Set();
+  const pushEntry = (entry) => {
+    const clean = sanitizeHistoryEntry(entry);
+    if (!clean) return;
+    const key = `${clean.createdAt}__${clean.input}__${clean.feedback}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    merged.push(clean);
+  };
+  [...(Array.isArray(primaryEntries) ? primaryEntries : []), ...(Array.isArray(secondaryEntries) ? secondaryEntries : [])].forEach(pushEntry);
+  merged.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return merged.slice(0, EVAL_HISTORY_LIMIT);
+}
+
+function formatHistoryTimestamp(isoString) {
+  if (!isoString) return '';
+  const d = new Date(isoString);
+  if (Number.isNaN(d.getTime())) return '';
+  try {
+    return d.toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  } catch (e) {
+    return d.toISOString();
+  }
+}
+
+function renderEvaluationHistory(type, idx, entries) {
+  const container = document.getElementById(`${type}History_${idx}`);
+  if (!container) return;
+  const history = Array.isArray(entries) ? entries : loadEvaluationHistory(type, idx);
+  container.innerHTML = '';
+  if (!history.length) {
+    const empty = document.createElement('div');
+    empty.className = 'history-empty';
+    empty.textContent = type === 'translation' ? 'まだ翻訳評価はありません。' : 'まだリスニング評価はありません。';
+    container.appendChild(empty);
+    return;
+  }
+  history.forEach(entry => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'history-entry';
+
+    const header = document.createElement('div');
+    header.className = 'history-entry-header';
+    const timeEl = document.createElement('time');
+    timeEl.textContent = formatHistoryTimestamp(entry.createdAt) || '日時不明';
+    header.appendChild(timeEl);
+    const typeBadge = document.createElement('span');
+    typeBadge.textContent = type === 'translation' ? '翻訳評価' : 'リスニング評価';
+    header.appendChild(typeBadge);
+    wrapper.appendChild(header);
+
+    const inputRow = document.createElement('div');
+    inputRow.className = 'history-row';
+    const inputLabel = document.createElement('span');
+    inputLabel.className = 'history-label';
+    inputLabel.textContent = '入力';
+    const inputText = document.createElement('div');
+    inputText.className = 'history-text';
+    inputText.textContent = entry?.input || '';
+    inputRow.appendChild(inputLabel);
+    inputRow.appendChild(inputText);
+    wrapper.appendChild(inputRow);
+
+    const feedbackRow = document.createElement('div');
+    feedbackRow.className = 'history-row';
+    const feedbackLabel = document.createElement('span');
+    feedbackLabel.className = 'history-label';
+    feedbackLabel.textContent = '評価';
+    const feedbackText = document.createElement('div');
+    feedbackText.className = 'history-text';
+    feedbackText.textContent = entry?.feedback || '';
+    feedbackRow.appendChild(feedbackLabel);
+    feedbackRow.appendChild(feedbackText);
+    wrapper.appendChild(feedbackRow);
+
+    container.appendChild(wrapper);
+  });
+}
+
+function appendEvaluationHistory(type, idx, input, feedback, createdAt = null, options = {}) {
+  const baseEntry = sanitizeHistoryEntry({ input, feedback, createdAt });
+  if (!baseEntry) return;
+  const current = loadEvaluationHistory(type, idx);
+  if (!options.allowDuplicate) {
+    const exists = current.some(entry => entry.input === baseEntry.input && entry.feedback === baseEntry.feedback && entry.createdAt === baseEntry.createdAt);
+    if (exists) {
+      renderEvaluationHistory(type, idx, current);
+      return;
+    }
+  }
+  const merged = mergeHistoryEntries([baseEntry, ...current]);
+  saveEvaluationHistory(type, idx, merged);
+  renderEvaluationHistory(type, idx, merged);
+}
+
+function getEvaluationHistoryCount(type, idx) {
+  return loadEvaluationHistory(type, idx).length;
 }
 
 function computePagePrefix() {
@@ -336,23 +492,18 @@ function updateEntrySummary(idx) {
   const noteVal = (noteInput?.value || "").trim();
   const transVal = (transInput?.value || "").trim();
 
-  let listeningFeedback = "";
-  let translationFeedback = "";
-  try {
-    listeningFeedback = storageGet(`chatResponse_listening_${idx}`) || "";
-    translationFeedback = storageGet(`chatResponse_translation_${idx}`) || "";
-  } catch (e) {
-    listeningFeedback = "";
-    translationFeedback = "";
-  }
+  let listeningHistoryCount = 0;
+  let translationHistoryCount = 0;
+  try { listeningHistoryCount = getEvaluationHistoryCount('listening', idx); } catch (e) {}
+  try { translationHistoryCount = getEvaluationHistoryCount('translation', idx); } catch (e) {}
 
   const recList = document.getElementById(`recList_${idx}`);
   const recCount = recList ? recList.querySelectorAll('.rec-card').length : 0;
   const syncText = document.getElementById(`syncStatus_${idx}`)?.textContent?.trim() || "";
   const isDirty = entryEl?.dataset?.dirty === '1';
 
-  const listeningDone = Boolean(noteVal || listeningFeedback);
-  const translationDone = Boolean(transVal || translationFeedback);
+  const listeningDone = listeningHistoryCount > 0;
+  const translationDone = translationHistoryCount > 0;
   const recordingDone = recCount > 0;
   if (statusEl) {
     const statuses = [
@@ -402,7 +553,7 @@ function buildSections() {
             <button id="note_${idx}_compare">リスニング評価</button>
           </div>
           <textarea id="note_${idx}_input" placeholder="聞こえた文を入力…"></textarea>
-          <div class="feedback" id="feedback_${idx}"></div>
+          <div class="evaluation-history" id="listeningHistory_${idx}"></div>
         </div>
         <div class="evaluation-block translation-block">
           <div class="evaluation-header">
@@ -410,7 +561,7 @@ function buildSections() {
             <button id="trans_${idx}_compare">翻訳評価</button>
           </div>
           <textarea id="trans_${idx}_input" placeholder="日本語訳を入力…"></textarea>
-          <div class="feedback" id="trans_feedback_${idx}"></div>
+          <div class="evaluation-history" id="translationHistory_${idx}"></div>
         </div>
         <div class="evaluation-block pronunciation-block">
           <div class="evaluation-header">
@@ -448,8 +599,6 @@ function setupBlock(idx, sentence) {
 
   const noteInput = document.getElementById(`note_${idx}_input`);
   const transInput = document.getElementById(`trans_${idx}_input`);
-  const feedbackEl = document.getElementById(`feedback_${idx}`);
-  const transFeedbackEl = document.getElementById(`trans_feedback_${idx}`);
   const submitBtn = document.getElementById(`submitBtn_${idx}`);
   const pendingPreview = document.getElementById(`pendingPreview_${idx}`);
   let pendingPreviewUrl = null;
@@ -480,12 +629,8 @@ function setupBlock(idx, sentence) {
   if (secondaryScriptContent) secondaryScriptContent.textContent = sentence;
   noteInput.value = storageGet(`note_${idx}`) || "";
   transInput.value = storageGet(`trans_${idx}`) || "";
-  try {
-    const savedListenFb = storageGet(`chatResponse_listening_${idx}`);
-    if (savedListenFb && feedbackEl) feedbackEl.textContent = savedListenFb;
-    const savedTransFb = storageGet(`chatResponse_translation_${idx}`);
-    if (savedTransFb && transFeedbackEl) transFeedbackEl.textContent = savedTransFb;
-  } catch (e) {}
+  renderEvaluationHistory('listening', idx);
+  renderEvaluationHistory('translation', idx);
   updateEntrySummary(idx);
   setTimeout(() => {
     fetchAssessmentsForSection().catch(err => console.warn('prefetch assessments failed', err));
@@ -503,11 +648,10 @@ function setupBlock(idx, sentence) {
     remoteNoteLoading = true;
     const syncEl = document.getElementById(`syncStatus_${idx}`);
     try {
-  const pagePrefix = PAGE_PREFIX;
+  const pagePrefix = PAGE_PREFIX || computePagePrefix();
   const sidecarKey = pagePrefix + `notes_section_${idx}.assessment.json`;
   const resp = await authedFetch(`/api/assessment?key=${encodeURIComponent(sidecarKey)}`);
       if (!resp.ok) {
-        if (syncEl) syncEl.textContent = 'サーバーにメモはありません';
         return;
       }
       const j = await resp.json().catch((error) => {
@@ -517,21 +661,41 @@ function setupBlock(idx, sentence) {
       const item = j?.item;
       if (item && item.result && typeof item.result === 'object') {
         const r = item.result;
-        if (r.listening || r.translation || r.listeningFeedback || r.translationFeedback) {
-          if (!notesDirty) {
-            noteInput.value = r.listening ?? noteInput.value;
-            transInput.value = r.translation ?? transInput.value;
-            try { if (r.listeningFeedback) { feedbackEl.textContent = r.listeningFeedback; storageSet(`chatResponse_listening_${idx}`, r.listeningFeedback); } } catch (error) {}
-            try { if (r.translationFeedback) { transFeedbackEl.textContent = r.translationFeedback; storageSet(`chatResponse_translation_${idx}`, r.translationFeedback); } } catch (error) {}
+        if (!notesDirty) {
+          if (typeof r.listening === 'string') {
+            noteInput.value = r.listening;
             storageSet(`note_${idx}`, noteInput.value.trim());
-            storageSet(`trans_${idx}`, transInput.value.trim());
-            if (entryEl) entryEl.dataset.dirty = '0';
-            notesDirty = false;
           }
-          if (syncEl) syncEl.textContent = 'サーバーから読み込みました';
+          if (typeof r.translation === 'string') {
+            transInput.value = r.translation;
+            storageSet(`trans_${idx}`, transInput.value.trim());
+          }
+          if (entryEl) entryEl.dataset.dirty = '0';
+          notesDirty = false;
         }
-      } else if (syncEl) {
-        syncEl.textContent = 'サーバーにメモはありません';
+
+        const remoteListeningHistory = Array.isArray(r.listeningHistory) ? r.listeningHistory : [];
+        const remoteTranslationHistory = Array.isArray(r.translationHistory) ? r.translationHistory : [];
+        const legacyListening = (!remoteListeningHistory.length && r.listening && r.listeningFeedback)
+          ? [{ input: r.listening, feedback: r.listeningFeedback, createdAt: r.savedAt || item.savedAt }]
+          : [];
+        const legacyTranslation = (!remoteTranslationHistory.length && r.translation && r.translationFeedback)
+          ? [{ input: r.translation, feedback: r.translationFeedback, createdAt: r.savedAt || item.savedAt }]
+          : [];
+
+        const mergedListening = mergeHistoryEntries([...remoteListeningHistory, ...legacyListening], loadEvaluationHistory('listening', idx));
+        if (mergedListening.length) {
+          saveEvaluationHistory('listening', idx, mergedListening);
+          renderEvaluationHistory('listening', idx, mergedListening);
+        }
+
+        const mergedTranslation = mergeHistoryEntries([...remoteTranslationHistory, ...legacyTranslation], loadEvaluationHistory('translation', idx));
+        if (mergedTranslation.length) {
+          saveEvaluationHistory('translation', idx, mergedTranslation);
+          renderEvaluationHistory('translation', idx, mergedTranslation);
+        }
+
+        if (syncEl) syncEl.textContent = 'サーバーから読み込みました';
       }
     } catch (error) {
       console.warn('fetchRemoteNotes failed', error);
@@ -561,24 +725,32 @@ function setupBlock(idx, sentence) {
     if (syncEl) syncEl.textContent = '未保存 (閉じると保存)';
     updateEntrySummary(idx);
   });
-  document.getElementById(`note_${idx}_compare`).addEventListener("click", () =>
-    callChatGPT(noteInput.value.trim(), sentence, feedbackEl, false, idx)
-  );
-  document.getElementById(`trans_${idx}_compare`).addEventListener("click", () =>
-    callChatGPT(transInput.value.trim(), sentence, transFeedbackEl, true, idx)
-  );
+  const listeningBtn = document.getElementById(`note_${idx}_compare`);
+  const translationBtn = document.getElementById(`trans_${idx}_compare`);
+  if (listeningBtn) {
+    listeningBtn.addEventListener('click', () =>
+      callChatGPT({ type: 'listening', idx, inputEl: noteInput, referenceText: sentence, buttonEl: listeningBtn })
+    );
+  }
+  if (translationBtn) {
+    translationBtn.addEventListener('click', () =>
+      callChatGPT({ type: 'translation', idx, inputEl: transInput, referenceText: sentence, buttonEl: translationBtn })
+    );
+  }
 
   // save note/translation pair to server sidecar for cross-device sync
   async function saveNotesToServer(sectionIdx){
     if (!notesDirty) return;
     try{
       const syncEl = document.getElementById(`syncStatus_${sectionIdx}`);
-      const listening = document.getElementById(`note_${sectionIdx}_input`).value.trim();
-      const translation = document.getElementById(`trans_${sectionIdx}_input`).value.trim();
+    const listening = document.getElementById(`note_${sectionIdx}_input`).value.trim();
+    const translation = document.getElementById(`trans_${sectionIdx}_input`).value.trim();
+    const listeningHistory = loadEvaluationHistory('listening', sectionIdx);
+    const translationHistory = loadEvaluationHistory('translation', sectionIdx);
       if (syncEl) syncEl.textContent = '保存中…';
       updateEntrySummary(sectionIdx);
   const pagePrefix = PAGE_PREFIX;
-  const body = { key: pagePrefix + `notes_section_${sectionIdx}`, result: { listening, translation, savedAt: new Date().toISOString() }, referenceText: '' };
+  const body = { key: pagePrefix + `notes_section_${sectionIdx}`, result: { listening, translation, listeningHistory, translationHistory, savedAt: new Date().toISOString() }, referenceText: '' };
   const resp = await authedFetch('/api/assessment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (resp && resp.ok) {
         if (syncEl) syncEl.textContent = '保存済み';
@@ -923,36 +1095,79 @@ function setupBlock(idx, sentence) {
 }
 
 // ChatGPT連携（日本語プロンプト）
-async function callChatGPT(userText, refText, targetEl, isTranslation = false, idx) {
+async function callChatGPT({ type, idx, inputEl, referenceText, buttonEl }) {
+  const isTranslation = type === 'translation';
+  const textValue = inputEl?.value ?? '';
+  const userText = String(textValue).trim();
+  if (!userText) {
+    if (inputEl) inputEl.focus();
+    return;
+  }
+
   const prompt = isTranslation
     ? { system: "以下は翻訳評価です。", template: "学習者の訳: {{student}}\n原文: {{reference}}\n誤訳や不足、良い点を日本語で簡潔に指摘してください。" }
     : { system: "以下はリスニング評価です。", template: "学習者: {{student}}\n正解: {{reference}}\n差分を比較し、日本語で簡潔にフィードバックしてください。" };
-  const systemPrompt = prompt.system;
-  const userPrompt = prompt.template.replace("{{student}}", userText).replace("{{reference}}", refText);
-  targetEl.textContent = "⏳ 評価中…";
+
+  const originalLabel = buttonEl?.textContent;
+  if (buttonEl) {
+    buttonEl.disabled = true;
+    buttonEl.textContent = '評価中…';
+  }
+
   try {
-    // Call server-side proxy which uses OPENAI_API_KEY from environment
+    const systemPrompt = prompt.system;
+    const userPrompt = prompt.template.replace("{{student}}", userText).replace("{{reference}}", referenceText);
     const body = { model: 'gpt-4', messages: [ { role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt } ] };
-  const res = await authedFetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const res = await authedFetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!res.ok) throw new Error(`Error: ${res.status} ${res.statusText}`);
     const data = await res.json();
-    const feedback = data.choices?.[0]?.message?.content || "⚠️ 応答がありません。";
-    targetEl.textContent = feedback;
-    const key = isTranslation ? `chatResponse_translation_${idx}` : `chatResponse_listening_${idx}`;
-  try { storageSet(key, feedback); } catch(e){}
-    // persist to server sidecar for cross-device reload
-    try{
-      const listening = document.getElementById(`note_${idx}_input`)?.value.trim() || '';
-      const translation = document.getElementById(`trans_${idx}_input`)?.value.trim() || '';
-  const listeningFeedback = isTranslation ? (storageGet(`chatResponse_listening_${idx}`) || '') : (isTranslation ? '' : feedback);
-  const translationFeedback = isTranslation ? feedback : (storageGet(`chatResponse_translation_${idx}`) || '');
-      const pagePrefixLocal = (() => { let p = location.host + location.pathname; p = p.replace(/[^A-Za-z0-9._\-/]/g,'_'); if (!p.endsWith('/')) p += '/'; return p; })();
-      const body2 = { key: pagePrefixLocal + `notes_section_${idx}`, result: { listening, translation, listeningFeedback, translationFeedback, savedAt: new Date().toISOString() }, referenceText: '' };
-  authedFetch('/api/assessment', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body2) }).catch(e=>console.warn('persist chat feedback failed', e));
-    }catch(e){ console.warn('persist chat feedback outer failed', e); }
-    updateEntrySummary(idx);
+    const feedback = data.choices?.[0]?.message?.content || '⚠️ 応答がありません。';
+
+  appendEvaluationHistory(isTranslation ? 'translation' : 'listening', idx, userText, feedback);
+
+  const legacyKey = isTranslation ? `chatResponse_translation_${idx}` : `chatResponse_listening_${idx}`;
+  storageRemove(legacyKey);
+
+    if (inputEl) {
+      inputEl.value = '';
+      const storageKey = isTranslation ? `trans_${idx}` : `note_${idx}`;
+      storageRemove(storageKey);
+    }
+
+    const listening = document.getElementById(`note_${idx}_input`)?.value.trim() || '';
+    const translation = document.getElementById(`trans_${idx}_input`)?.value.trim() || '';
+    const listeningHistory = loadEvaluationHistory('listening', idx);
+    const translationHistory = loadEvaluationHistory('translation', idx);
+
+    const pageKeyPrefix = PAGE_PREFIX || computePagePrefix();
+    authedFetch('/api/assessment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        key: pageKeyPrefix + `notes_section_${idx}`,
+        result: {
+          listening,
+          translation,
+          listeningHistory,
+          translationHistory,
+          savedAt: new Date().toISOString()
+        },
+        referenceText: ''
+      })
+    }).catch(e => console.warn('persist chat feedback failed', e));
+
+    const entryEl = document.querySelector(`.entry[data-section="${idx}"]`);
+    if (entryEl) entryEl.dataset.dirty = '0';
+    const syncEl = document.getElementById(`syncStatus_${idx}`);
+    if (syncEl) syncEl.textContent = '保存済み';
   } catch (e) {
-    targetEl.textContent = `⚠️ エラー発生: ${e.message}`;
+    console.warn('callChatGPT failed', e);
+    alert(`評価に失敗しました: ${e.message}`);
+  } finally {
+    if (buttonEl) {
+      buttonEl.disabled = false;
+      buttonEl.textContent = originalLabel || (isTranslation ? '翻訳評価' : 'リスニング評価');
+    }
     updateEntrySummary(idx);
   }
 }
