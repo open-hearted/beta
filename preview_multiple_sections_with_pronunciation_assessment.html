@@ -1227,7 +1227,10 @@ async function callChatGPT({ type, idx, inputEl, referenceText, buttonEl }) {
 
   const prompt = isTranslation
     ? { system: "以下は翻訳評価です。", template: "学習者の訳: {{student}}\n原文: {{reference}}\n誤訳や不足、良い点を日本語で簡潔に指摘してください。" }
-    : { system: "以下はリスニング評価です。", template: "学習者: {{student}}\n正解: {{reference}}\n差分を比較し、日本語で簡潔にフィードバックしてください。" };
+    : {
+        system: "あなたは英語リスニングを指導する講師です。学習者が聞き取った英文と公式スクリプトを丁寧に比較し、どの語が正しく、どこに抜けや誤りがあるかを具体的に指摘してください。曖昧な評価や『正しいです』だけで済ませず、改善点・次の練習アイデアも必ず盛り込みます。日本語で分かりやすく、肯定的なトーンを保ちながらフィードバックを返してください。",
+        template: "学習者が聞き取って入力した英文:\n{{student}}\n\n公式の正しいスクリプト:\n{{reference}}\n\n以下の形式で日本語で回答してください。\n1. 全体評価（正確さを一言で）\n2. 良かった点（あれば箇条書き）\n3. 改善点（不足・誤り・順序違いなど具体的に）\n4. 次の練習アドバイス（1つ）"
+      };
 
   const originalLabel = buttonEl?.textContent;
   if (buttonEl) {
