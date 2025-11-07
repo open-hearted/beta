@@ -338,6 +338,47 @@ function getEvaluationHistoryCount(type, idx) {
   return loadEvaluationHistory(type, idx).length;
 }
 
+function pronunciationAttemptsKey(idx) {
+  return `pronunciationAttempts_${idx}`;
+}
+
+function getStoredPronunciationAttempts(idx) {
+  const raw = storageGet(pronunciationAttemptsKey(idx));
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+}
+
+function setPronunciationAttempts(idx, count) {
+  storageSet(pronunciationAttemptsKey(idx), String(Math.max(0, Math.floor(count))));
+}
+
+function getPronunciationAssessmentCount(idx) {
+  const recList = document.getElementById(`recList_${idx}`);
+  if (!recList) return 0;
+  return Array.from(recList.querySelectorAll('.rec-card')).filter(card => card.dataset.assessed === 'true').length;
+}
+
+function getPronunciationAttempts(idx) {
+  return Math.max(getStoredPronunciationAttempts(idx), getPronunciationAssessmentCount(idx));
+}
+
+function incrementPronunciationAttempts(idx) {
+  const currentStored = getStoredPronunciationAttempts(idx);
+  const assessedCount = getPronunciationAssessmentCount(idx);
+  const next = Math.max(currentStored + 1, assessedCount);
+  setPronunciationAttempts(idx, next);
+  return next;
+}
+
+function isPronunciationLimitReached(idx) {
+  try {
+    return getPronunciationAttempts(idx) >= PRONUNCIATION_EVAL_LIMIT;
+  } catch (e) {
+    console.warn('isPronunciationLimitReached failed', e);
+    return false;
+  }
+}
+
 function computePagePrefix() {
   const safeUser = sanitizeUserIdForClient(authState.userId || 'anon');
   let p = location.host + location.pathname;
@@ -677,6 +718,14 @@ function setupBlock(idx, sentence) {
           notesDirty = false;
         }
 
+        if (typeof r.pronunciationAttempts === 'number' && Number.isFinite(r.pronunciationAttempts)) {
+          const current = getPronunciationAttempts(idx);
+          const remoteCount = Math.max(0, Math.floor(r.pronunciationAttempts));
+          if (remoteCount > current) {
+            setPronunciationAttempts(idx, remoteCount);
+          }
+        }
+
         const remoteListeningHistory = Array.isArray(r.listeningHistory) ? r.listeningHistory : [];
         const remoteTranslationHistory = Array.isArray(r.translationHistory) ? r.translationHistory : [];
         const legacyListening = (!remoteListeningHistory.length && r.listening && r.listeningFeedback)
@@ -750,10 +799,11 @@ function setupBlock(idx, sentence) {
     const translation = document.getElementById(`trans_${sectionIdx}_input`).value.trim();
     const listeningHistory = loadEvaluationHistory('listening', sectionIdx);
     const translationHistory = loadEvaluationHistory('translation', sectionIdx);
+    const pronunciationAttempts = getPronunciationAttempts(sectionIdx);
       if (syncEl) syncEl.textContent = '保存中…';
       updateEntrySummary(sectionIdx);
   const pagePrefix = PAGE_PREFIX;
-  const body = { key: pagePrefix + `notes_section_${sectionIdx}`, result: { listening, translation, listeningHistory, translationHistory, savedAt: new Date().toISOString() }, referenceText: '' };
+  const body = { key: pagePrefix + `notes_section_${sectionIdx}`, result: { listening, translation, listeningHistory, translationHistory, pronunciationAttempts, savedAt: new Date().toISOString() }, referenceText: '' };
   const resp = await authedFetch('/api/assessment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (resp && resp.ok) {
         if (syncEl) syncEl.textContent = '保存済み';
@@ -889,6 +939,11 @@ function setupBlock(idx, sentence) {
         if (latest) {
           displayResults(JSON.stringify(latest.result), idx);
         }
+        const assessedTotal = collected.length;
+        const currentAttempts = getPronunciationAttempts(idx);
+        if (assessedTotal > currentAttempts) {
+          setPronunciationAttempts(idx, assessedTotal);
+        }
       }
     } catch (error) {
       console.warn('fetchAssessmentsForSection failed', error);
@@ -981,7 +1036,11 @@ function setupBlock(idx, sentence) {
       if (recStatus) recStatus.textContent = '録音完了';
       // stop timer and enable submit
     try{ if (recorderRef.timerId) clearInterval(recorderRef.timerId); const tEl = document.getElementById(`recTimer_${idx}`); if (tEl) tEl.textContent = ''; }catch(e){}
-    if (submitBtn) submitBtn.disabled = false;
+    const limitReached = isPronunciationLimitReached(idx);
+    if (submitBtn) submitBtn.disabled = limitReached;
+    if (limitReached && recStatus) {
+      recStatus.textContent = `発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回までです。`;
+    }
     } catch(e){
       resultBox.textContent = '録音停止エラー: '+e.message;
     } finally {
@@ -1076,13 +1135,43 @@ function setupBlock(idx, sentence) {
     // update card with assessment marker and also render main area
   try { markCardAssessed(idx, s3Key, assessJson, nowIso); } catch(e){}
     displayResults(JSON.stringify(assessJson.result || assessJson?.result || assessJson), idx);
+      const attempts = incrementPronunciationAttempts(idx);
+      try {
+        const listeningVal = document.getElementById(`note_${idx}_input`)?.value.trim() || '';
+        const translationVal = document.getElementById(`trans_${idx}_input`)?.value.trim() || '';
+        const listeningHistory = loadEvaluationHistory('listening', idx);
+        const translationHistory = loadEvaluationHistory('translation', idx);
+        const pageKeyPrefix = PAGE_PREFIX || computePagePrefix();
+        authedFetch('/api/assessment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            key: pageKeyPrefix + `notes_section_${idx}`,
+            result: {
+              listening: listeningVal,
+              translation: translationVal,
+              listeningHistory,
+              translationHistory,
+              pronunciationAttempts: attempts,
+              savedAt: new Date().toISOString()
+            },
+            referenceText: ''
+          })
+        }).catch(err => console.warn('persist pronunciation attempts failed', err));
+      } catch (metaErr) {
+        console.warn('collect pronunciation metadata failed', metaErr);
+      }
       disposePendingPreview();
       lastRecordedFile = null;
       if (recStatus) recStatus.textContent = 'アップロード済み (録音一覧を確認してください)';
     } catch(e){
       resultBox.textContent = 'エラー: '+e.message;
     } finally {
-      if (submitBtn) submitBtn.disabled = !lastRecordedFile;
+      const limitReached = isPronunciationLimitReached(idx);
+      if (submitBtn) submitBtn.disabled = limitReached || !lastRecordedFile;
+      if (limitReached && recStatus) {
+        recStatus.textContent = `発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回までです。`;
+      }
     }
     updateEntrySummary(idx);
   }
@@ -1091,8 +1180,19 @@ function setupBlock(idx, sentence) {
   if (submitBtn) submitBtn.onclick = async () => {
     resultBox.textContent = '';
     if (!lastRecordedFile) { resultBox.textContent = '録音を行ってから「発音評価を実行」を押してください。'; return; }
+    if (isPronunciationLimitReached(idx)) {
+      alert(`発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回までです。`);
+      if (submitBtn) submitBtn.disabled = true;
+      if (recStatus) recStatus.textContent = `発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回までです。`;
+      return;
+    }
     await uploadFileAndAssess(lastRecordedFile);
   };
+
+  if (submitBtn && isPronunciationLimitReached(idx)) {
+    submitBtn.disabled = true;
+    if (recStatus) recStatus.textContent = `発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回までです。`;
+  }
 
   // page-level word toggle removed; per-card controls are used instead
 }
@@ -1155,6 +1255,7 @@ async function callChatGPT({ type, idx, inputEl, referenceText, buttonEl }) {
     const translation = document.getElementById(`trans_${idx}_input`)?.value.trim() || '';
     const listeningHistory = loadEvaluationHistory('listening', idx);
     const translationHistory = loadEvaluationHistory('translation', idx);
+    const pronunciationAttempts = getPronunciationAttempts(idx);
 
     const pageKeyPrefix = PAGE_PREFIX || computePagePrefix();
     authedFetch('/api/assessment', {
@@ -1167,6 +1268,7 @@ async function callChatGPT({ type, idx, inputEl, referenceText, buttonEl }) {
           translation,
           listeningHistory,
           translationHistory,
+          pronunciationAttempts,
           savedAt: new Date().toISOString()
         },
         referenceText: ''
@@ -1377,6 +1479,7 @@ function markCardAssessed(sectionIdx, s3Key, assessJson, savedAt){
     const listEl = document.getElementById(`recList_${sectionIdx}`); if (!listEl) return;
     const card = listEl.querySelector(`[data-s3key="${s3Key}"]`);
     if (!card) return;
+    card.dataset.assessed = 'true';
     const summary = card.querySelector('div');
     // try to pull a numeric score
   const nb = (assessJson && (assessJson.result || assessJson))?.result || assessJson?.result || assessJson;
