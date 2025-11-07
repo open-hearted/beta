@@ -285,9 +285,6 @@ function renderEvaluationHistory(type, idx, entries) {
     const timeEl = document.createElement('time');
     timeEl.textContent = formatHistoryTimestamp(entry.createdAt) || '日時不明';
     header.appendChild(timeEl);
-    const typeBadge = document.createElement('span');
-    typeBadge.textContent = type === 'translation' ? '翻訳評価' : 'リスニング評価';
-    header.appendChild(typeBadge);
     wrapper.appendChild(header);
 
     const inputRow = document.createElement('div');
