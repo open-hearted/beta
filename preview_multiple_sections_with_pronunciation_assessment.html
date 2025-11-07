@@ -10,6 +10,9 @@
     *, *::before, *::after { box-sizing: border-box; }
     html, body { overflow-x: hidden; }
   body { font-family: sans-serif; padding: 1rem; background: #f0f2f5; max-width: none; width: 100%; margin: 0; line-height: 1.6; }
+  .full-audio-block { max-width: 820px; margin: 0 auto 2.5rem auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 1.25rem 1.5rem; box-shadow: 0 6px 12px rgba(15,23,42,0.06); }
+  .full-audio-title { margin: 0 0 0.4rem 0; font-size: 1.35rem; color: #1f2937; text-align: center; }
+  .full-audio-caption { margin: 0 0 1rem 0; font-size: 0.95rem; color: #4b5563; text-align: center; }
     .card { background: transparent; border: none; padding: 0; margin-bottom: 2rem; box-shadow: none; }
     .entry { border: 1px solid #ddd; border-radius: 12px; background: #fff; overflow: hidden; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05); }
   .entry summary { position: relative; list-style: none; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 1rem 1.25rem; background: #f7f8fc; cursor: pointer; font-weight: 600; color: #1f2937; }
@@ -74,7 +77,11 @@
 <body>
 
 <h1>毎日が成長日：リスニング＆発音トレーニング道場</h1>
-<audio controls src="" id="fullAudio" style="width: 100%; max-width: 800px; margin: 0 auto 2rem auto; display: block;"></audio>
+<div class="full-audio-block">
+  <h2 class="full-audio-title">お手本ニュース音声</h2>
+  <p class="full-audio-caption">まずはニュース全体を通して聞き、発音やリズムを確認しましょう。</p>
+  <audio controls src="" id="fullAudio" style="width: 100%; display: block;"></audio>
+</div>
 <div id="sentence-sections"></div>
 
 <script>
