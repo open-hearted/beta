@@ -56,6 +56,8 @@
   .evaluation-history { margin-top: 0.75rem; border-top: 1px dashed #d1d5db; padding-top: 0.75rem; display: flex; flex-direction: column; gap: 0.75rem; }
   .history-entry { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
   .history-entry-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: #6b7280; }
+  .history-entry-header .history-delete { background: #f87171; padding: 0.3rem 0.6rem; font-size: 0.8rem; }
+  .history-entry-header .history-delete:hover { background: #dc2626; }
   .history-row { display: flex; gap: 0.5rem; align-items: flex-start; }
   .history-label { font-weight: 600; min-width: 3rem; color: #374151; font-size: 0.9rem; }
   .history-text { flex: 1 1 auto; white-space: pre-wrap; word-break: break-word; font-size: 0.95rem; color: #1f2937; }
@@ -306,13 +308,23 @@ function saveEvaluationHistory(type, idx, history) {
   }
 }
 
+function deleteEvaluationHistoryEntry(type, idx, entryKey) {
+  const key = typeof entryKey === 'string' ? entryKey : '';
+  if (!key) return loadEvaluationHistory(type, idx);
+  const current = loadEvaluationHistory(type, idx);
+  const filtered = current.filter(entry => evaluationHistoryEntryKey(entry) !== key);
+  saveEvaluationHistory(type, idx, filtered);
+  renderEvaluationHistory(type, idx, filtered);
+  return filtered;
+}
+
 function mergeHistoryEntries(primaryEntries, secondaryEntries = []) {
   const merged = [];
   const seen = new Set();
   const pushEntry = (entry) => {
     const clean = sanitizeHistoryEntry(entry);
     if (!clean) return;
-    const key = `${clean.createdAt}__${clean.input}__${clean.feedback}`;
+    const key = evaluationHistoryEntryKey(clean);
     if (seen.has(key)) return;
     seen.add(key);
     merged.push(clean);
@@ -320,6 +332,14 @@ function mergeHistoryEntries(primaryEntries, secondaryEntries = []) {
   [...(Array.isArray(primaryEntries) ? primaryEntries : []), ...(Array.isArray(secondaryEntries) ? secondaryEntries : [])].forEach(pushEntry);
   merged.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   return merged.slice(0, EVAL_HISTORY_LIMIT);
+}
+
+function evaluationHistoryEntryKey(entry) {
+  if (!entry || typeof entry !== 'object') return '';
+  const created = entry.createdAt || '';
+  const input = entry.input || '';
+  const feedback = entry.feedback || '';
+  return `${created}__${input}__${feedback}`;
 }
 
 function formatHistoryTimestamp(isoString) {
@@ -354,6 +374,14 @@ function renderEvaluationHistory(type, idx, entries) {
     const timeEl = document.createElement('time');
     timeEl.textContent = formatHistoryTimestamp(entry.createdAt) || '日時不明';
     header.appendChild(timeEl);
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'history-delete';
+    deleteBtn.textContent = '削除';
+    deleteBtn.dataset.type = type;
+    deleteBtn.dataset.idx = String(idx);
+    deleteBtn.dataset.key = evaluationHistoryEntryKey(entry);
+    header.appendChild(deleteBtn);
     wrapper.appendChild(header);
 
     const inputRow = document.createElement('div');
@@ -897,6 +925,32 @@ function setupBlock(idx, sentence) {
   const body = { key: pagePrefix + `notes_section_${sectionIdx}`, result: { listening, translation, listeningHistory, translationHistory, pronunciationAttempts, savedAt: new Date().toISOString() }, referenceText: '' };
   const resp = await authedFetch('/api/assessment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (resp && resp.ok) {
+
+  const listeningHistoryEl = document.getElementById(`listeningHistory_${idx}`);
+  const translationHistoryEl = document.getElementById(`translationHistory_${idx}`);
+
+  const handleHistoryDelete = (historyType) => async (event) => {
+    const button = event.target.closest('.history-delete');
+    if (!button) return;
+    event.preventDefault();
+    const entryKey = button.dataset.key || '';
+    if (!entryKey) return;
+    if (!window.confirm('この評価を削除しますか？')) return;
+    deleteEvaluationHistoryEntry(historyType, idx, entryKey);
+    notesDirty = true;
+    if (entryEl) entryEl.dataset.dirty = '1';
+    const syncEl = document.getElementById(`syncStatus_${idx}`);
+    if (syncEl) syncEl.textContent = '保存中…';
+    try {
+      await saveNotesToServer(idx);
+    } catch (err) {
+      console.warn('history delete persistence failed', err);
+    }
+    updateEntrySummary(idx);
+  };
+
+  if (listeningHistoryEl) listeningHistoryEl.addEventListener('click', handleHistoryDelete('listening'));
+  if (translationHistoryEl) translationHistoryEl.addEventListener('click', handleHistoryDelete('translation'));
         if (syncEl) syncEl.textContent = '保存済み';
         notesDirty = false;
         if (entryEl) entryEl.dataset.dirty = '0';
