@@ -342,6 +342,37 @@ function evaluationHistoryEntryKey(entry) {
   return `${created}__${input}__${feedback}`;
 }
 
+function encodeHistoryEntryKey(rawKey) {
+  if (!rawKey) return '';
+  try {
+    const bytes = new TextEncoder().encode(String(rawKey));
+    let binary = '';
+    bytes.forEach(byte => { binary += String.fromCharCode(byte); });
+    return btoa(binary);
+  } catch (err) {
+    try {
+      return btoa(unescape(encodeURIComponent(String(rawKey))));
+    } catch {
+      return String(rawKey);
+    }
+  }
+}
+
+function decodeHistoryEntryKey(encodedKey) {
+  if (!encodedKey) return '';
+  try {
+    const binary = atob(encodedKey);
+    const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  } catch (err) {
+    try {
+      return decodeURIComponent(escape(atob(encodedKey)));
+    } catch {
+      return encodedKey;
+    }
+  }
+}
+
 function formatHistoryTimestamp(isoString) {
   if (!isoString) return '';
   const d = new Date(isoString);
@@ -380,7 +411,7 @@ function renderEvaluationHistory(type, idx, entries) {
     deleteBtn.textContent = '削除';
     deleteBtn.dataset.type = type;
     deleteBtn.dataset.idx = String(idx);
-    deleteBtn.dataset.key = evaluationHistoryEntryKey(entry);
+    deleteBtn.dataset.key = encodeHistoryEntryKey(evaluationHistoryEntryKey(entry));
     header.appendChild(deleteBtn);
     wrapper.appendChild(header);
 
@@ -933,7 +964,7 @@ function setupBlock(idx, sentence) {
     const button = event.target.closest('.history-delete');
     if (!button) return;
     event.preventDefault();
-    const entryKey = button.dataset.key || '';
+    const entryKey = decodeHistoryEntryKey(button.dataset.key || '');
     if (!entryKey) return;
     if (!window.confirm('この評価を削除しますか？')) return;
     deleteEvaluationHistoryEntry(historyType, idx, entryKey);
