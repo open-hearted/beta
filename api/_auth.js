@@ -3,6 +3,7 @@ const crypto = require('crypto');
 
 const USERS_ENV = process.env.AUTH_USERS || process.env.APP_AUTH_USERS || '';
 const AUTH_SECRET = process.env.AUTH_SECRET || process.env.JWT_SECRET || process.env.AUTH_JWT_SECRET;
+const PASSWORD_OPTIONAL_PREFIX = 'acg2_';
 
 let cachedUsers = null;
 
@@ -12,6 +13,10 @@ function sanitizeSegment(segment) {
 
 function sanitizeUserId(userId) {
   return sanitizeSegment(userId || '');
+}
+
+function isPasswordOptionalUser(userId) {
+  return typeof userId === 'string' && userId.startsWith(PASSWORD_OPTIONAL_PREFIX);
 }
 
 function parseUsers() {
@@ -157,6 +162,11 @@ function requireAuth(req, res) {
 }
 
 async function authenticateUser(userId, password) {
+  if (!userId) return null;
+  if (isPasswordOptionalUser(userId)) {
+    const safeIdOptional = sanitizeUserId(userId);
+    return { id: String(userId), safeId: safeIdOptional };
+  }
   const ok = await verifyUserPassword(userId, password);
   if (!ok) return null;
   const safeId = sanitizeUserId(userId);
@@ -198,6 +208,7 @@ module.exports = {
   requireAuth,
   signToken,
   verifyToken,
+  isPasswordOptionalUser,
   sanitizeUserId,
   ensureUserScopedPrefix,
   ensureUserScopedKey,

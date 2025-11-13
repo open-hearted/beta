@@ -1,4 +1,4 @@
-const { authenticateUser, requireAuth, signToken } = require('./_auth');
+const { authenticateUser, requireAuth, signToken, isPasswordOptionalUser } = require('./_auth');
 
 function parseBody(body) {
   if (!body) return {};
@@ -12,11 +12,15 @@ module.exports = async (req, res) => {
   if (req.method === 'POST') {
     try {
       const { userId, password } = parseBody(req.body);
-      if (!userId || !password) {
+      const normalizedUserId = typeof userId === 'string' ? userId.trim() : '';
+      const passwordValue = typeof password === 'string' ? password : '';
+      const needsPassword = !isPasswordOptionalUser(normalizedUserId);
+      const passwordProvided = passwordValue.length > 0;
+      if (!normalizedUserId || (needsPassword && !passwordProvided)) {
         res.status(400).json({ error: 'userId と password は必須です' });
         return;
       }
-      const user = await authenticateUser(userId, password);
+      const user = await authenticateUser(normalizedUserId, needsPassword ? passwordValue : '');
       if (!user) {
         res.status(401).json({ error: 'ユーザーIDまたはパスワードが正しくありません' });
         return;
