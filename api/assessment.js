@@ -62,14 +62,22 @@ module.exports = async (req, res) => {
         return res.status(403).json({ error: 'forbidden' });
       }
 
-      const obj = await s3.send(
-        new GetObjectCommand({ Bucket: BUCKET, Key: scopedKey })
-      );
-      const text = await streamToString(
-        obj.Body instanceof Readable ? obj.Body : Readable.from(obj.Body)
-      );
-      const json = JSON.parse(text); // { savedAt, key, referenceText, result }
-      return res.json({ ok: true, item: json });
+      try {
+        const obj = await s3.send(
+          new GetObjectCommand({ Bucket: BUCKET, Key: scopedKey })
+        );
+        const text = await streamToString(
+          obj.Body instanceof Readable ? obj.Body : Readable.from(obj.Body)
+        );
+        const json = JSON.parse(text); // { savedAt, key, referenceText, result }
+        return res.json({ ok: true, item: json });
+      } catch (err) {
+        if (err && (err.name === 'NoSuchKey' || err.Code === 'NoSuchKey' || err?.$metadata?.httpStatusCode === 404)) {
+          return res.status(404).json({ ok: false, error: 'not found' });
+        }
+        console.error('assessment get key failed', err);
+        throw err;
+      }
     }
 
     // =========================
@@ -95,13 +103,21 @@ module.exports = async (req, res) => {
 
       const items = {};
       for (const k of keys) {
-        const obj = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: k }));
-        const text = await streamToString(
-          obj.Body instanceof Readable ? obj.Body : Readable.from(obj.Body)
-        );
-        const json = JSON.parse(text);
-        const wavKey = k.replace(/\.assessment\.json$/, '');
-        items[wavKey] = { summary: summarize(json) };
+        try {
+          const obj = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: k }));
+          const text = await streamToString(
+            obj.Body instanceof Readable ? obj.Body : Readable.from(obj.Body)
+          );
+          const json = JSON.parse(text);
+          const wavKey = k.replace(/\.assessment\.json$/, '');
+          items[wavKey] = { summary: summarize(json) };
+        } catch (err) {
+          if (err && (err.name === 'NoSuchKey' || err.Code === 'NoSuchKey' || err?.$metadata?.httpStatusCode === 404)) {
+            continue;
+          }
+          console.error('assessment list item failed', err);
+          throw err;
+        }
       }
 
       return res.json({ ok: true, items });

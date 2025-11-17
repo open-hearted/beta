@@ -48,11 +48,15 @@
   .evaluation-block { background: #f9fafb; border: 1px solid #d1d5db; border-radius: 10px; padding: 1rem; margin-top: 1rem; }
   .evaluation-header { display: flex; align-items: center; gap: 0.75rem; margin: 0 0 0.5rem 0; }
   .evaluation-title { margin: 0; font-size: 1.1rem; color: #374151; }
-  .evaluation-header button { margin: 0 0 0 auto; }
+  .evaluation-header button { margin: 0; }
+  .evaluation-header .eval-quota { margin-left: auto; }
+  .eval-quota { font-size: 0.9rem; color: #059669; font-weight: 600; }
   .pronunciation-controls { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+  .pronunciation-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
   .pronunciation-controls .rec-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 0.65rem 1.1rem; background-color: #2563eb; }
   .pronunciation-controls .rec-toggle.recording { background-color: #dc2626; }
-  .pronunciation-controls .pronunciation-submit { margin-left: auto; }
+  .pronunciation-status { color: #4b5563; font-size: 0.95rem; }
+  .pronunciation-timer { color: #b91c1c; font-weight: 600; }
   .evaluation-history { margin-top: 0.75rem; border-top: 1px dashed #d1d5db; padding-top: 0.75rem; display: flex; flex-direction: column; gap: 0.75rem; }
   .history-entry { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
   .history-entry-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: #6b7280; }
@@ -82,7 +86,7 @@
 </head>
 <body>
 
-<h1>毎日が成長日：リスニング＆発音トレーニング道場</h1>
+<h1>　毎日が成長日：リスニング＆発音トレーニング道場</h1>
 <div id="authBar" class="auth-bar hidden">
   <span id="authUserDisplay"></span>
   <button id="logoutBtn" type="button">ログアウト</button>
@@ -342,6 +346,25 @@ function evaluationHistoryEntryKey(entry) {
   return `${created}__${input}__${feedback}`;
 }
 
+function formatHistoryTimestamp(raw) {
+  if (!raw) return '';
+  try {
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleString('ja-JP', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+  } catch (err) {
+    console.warn('formatHistoryTimestamp failed', err);
+    return '';
+  }
+}
+
 function encodeHistoryEntryKey(rawKey) {
   if (!rawKey) return '';
   try {
@@ -349,11 +372,12 @@ function encodeHistoryEntryKey(rawKey) {
     let binary = '';
     bytes.forEach(byte => { binary += String.fromCharCode(byte); });
     return btoa(binary);
-  } catch (err) {
+  } catch (primaryErr) {
     try {
       return btoa(unescape(encodeURIComponent(String(rawKey))));
-    } catch {
-      return String(rawKey);
+    } catch (secondaryErr) {
+      console.warn('encodeHistoryEntryKey failed', primaryErr, secondaryErr);
+      return '';
     }
   }
 }
@@ -364,23 +388,9 @@ function decodeHistoryEntryKey(encodedKey) {
     const binary = atob(encodedKey);
     const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
     return new TextDecoder().decode(bytes);
-  } catch (err) {
-    try {
-      return decodeURIComponent(escape(atob(encodedKey)));
-    } catch {
-      return encodedKey;
-    }
-  }
-}
-
-function formatHistoryTimestamp(isoString) {
-  if (!isoString) return '';
-  const d = new Date(isoString);
-  if (Number.isNaN(d.getTime())) return '';
-  try {
-    return d.toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-  } catch (e) {
-    return d.toISOString();
+  } catch (primaryErr) {
+    console.warn('decodeHistoryEntryKey failed', primaryErr);
+    return '';
   }
 }
 
@@ -394,6 +404,7 @@ function renderEvaluationHistory(type, idx, entries) {
     empty.className = 'history-empty';
     empty.textContent = type === 'translation' ? 'まだ翻訳評価はありません。' : 'まだリスニング評価はありません。';
     container.appendChild(empty);
+    updateEvaluationQuotaDisplay(type, idx);
     return;
   }
   history.forEach(entry => {
@@ -441,6 +452,7 @@ function renderEvaluationHistory(type, idx, entries) {
 
     container.appendChild(wrapper);
   });
+  updateEvaluationQuotaDisplay(type, idx);
 }
 
 function appendEvaluationHistory(type, idx, input, feedback, createdAt = null, options = {}) {
@@ -461,6 +473,22 @@ function appendEvaluationHistory(type, idx, input, feedback, createdAt = null, o
 
 function getEvaluationHistoryCount(type, idx) {
   return loadEvaluationHistory(type, idx).length;
+}
+
+function updateEvaluationQuotaDisplay(type, idx) {
+  const el = document.getElementById(`${type}Quota_${idx}`);
+  if (!el) return;
+  const limit = type === 'translation' ? TRANSLATION_EVAL_LIMIT : LISTENING_EVAL_LIMIT;
+  const label = type === 'translation' ? '和訳評価' : '聞き取り評価';
+  try {
+    const count = getEvaluationHistoryCount(type, idx);
+    const remaining = Math.max(0, limit - count);
+    el.textContent = `残り${remaining}回`;
+    el.style.color = remaining === 0 ? '#b91c1c' : '#059669';
+    el.title = `${label}は1セクションにつき${limit}回まで`;
+  } catch (err) {
+    console.warn('updateEvaluationQuotaDisplay failed', type, idx, err);
+  }
 }
 
 function pronunciationAttemptsKey(idx) {
@@ -744,6 +772,7 @@ function buildSections() {
         <div class="evaluation-block listening-block">
           <div class="evaluation-header">
             <h3 class="evaluation-title">リスニング評価</h3>
+            <span class="eval-quota" id="listeningQuota_${idx}"></span>
             <button id="note_${idx}_compare">リスニング評価</button>
           </div>
           <textarea id="note_${idx}_input" placeholder="聞こえた文を入力…"></textarea>
@@ -752,6 +781,7 @@ function buildSections() {
         <div class="evaluation-block translation-block">
           <div class="evaluation-header">
             <h3 class="evaluation-title">翻訳評価</h3>
+            <span class="eval-quota" id="translationQuota_${idx}"></span>
             <button id="trans_${idx}_compare">翻訳評価</button>
           </div>
           <textarea id="trans_${idx}_input" placeholder="日本語訳を入力…"></textarea>
@@ -766,9 +796,12 @@ function buildSections() {
           <div class="content script-content secondary-script-content" style="display:none;"></div>
           <div class="pronunciation-controls">
             <button id="recToggle_${idx}" class="rec-toggle">🎙️ 録音開始</button>
-            <span id="recStatus_${idx}" style="margin-left:8px;color:#4b5563;font-size:0.95rem;"></span>
-            <span id="recTimer_${idx}" style="margin-left:8px;color:#b91c1c;font-weight:600;"></span>
-            <button id="submitBtn_${idx}" class="pronunciation-submit" disabled>発音評価を実行</button>
+            <span id="recStatus_${idx}" class="pronunciation-status"></span>
+            <span id="recTimer_${idx}" class="pronunciation-timer"></span>
+            <div class="pronunciation-actions">
+              <span id="recQuota_${idx}" class="eval-quota"></span>
+              <button id="submitBtn_${idx}" class="pronunciation-submit" disabled>発音評価を実行</button>
+            </div>
           </div>
           <pre id="result_${idx}" style="margin:0;padding:0;"></pre>
           <div id="pendingPreview_${idx}" class="pending-preview"></div>
@@ -836,6 +869,82 @@ function setupBlock(idx, sentence) {
   let assessmentsLoaded = false;
   let assessmentLoading = false;
 
+  const listeningHistoryEl = document.getElementById(`listeningHistory_${idx}`);
+  const translationHistoryEl = document.getElementById(`translationHistory_${idx}`);
+
+  const attachHistoryDeletion = (historyEl, historyType) => {
+    if (!historyEl) return;
+    historyEl.addEventListener('click', async (event) => {
+      const button = event.target.closest('.history-delete');
+      if (!button) return;
+      event.preventDefault();
+      const encodedKey = button.dataset.key || '';
+      const entryKey = decodeHistoryEntryKey(encodedKey);
+      if (!entryKey) return;
+      if (!confirm('この評価を削除しますか？')) return;
+      button.disabled = true;
+      try {
+        const beforeLength = loadEvaluationHistory(historyType, idx).length;
+        const filtered = deleteEvaluationHistoryEntry(historyType, idx, entryKey);
+        if (filtered.length === beforeLength) {
+          return;
+        }
+
+        notesDirty = true;
+        if (entryEl) entryEl.dataset.dirty = '1';
+        const syncEl = document.getElementById(`syncStatus_${idx}`);
+        if (syncEl) syncEl.textContent = '保存中…';
+        updateEntrySummary(idx);
+
+        const listeningVal = noteInput.value.trim();
+        const translationVal = transInput.value.trim();
+        const latestListeningHistory = loadEvaluationHistory('listening', idx);
+        const latestTranslationHistory = loadEvaluationHistory('translation', idx);
+        const pronunciationAttempts = getPronunciationAttempts(idx);
+        const pagePrefix = PAGE_PREFIX || computePagePrefix();
+        const payload = {
+          key: pagePrefix + `notes_section_${idx}`,
+          result: {
+            listening: listeningVal,
+            translation: translationVal,
+            listeningHistory: latestListeningHistory,
+            translationHistory: latestTranslationHistory,
+            pronunciationAttempts,
+            savedAt: new Date().toISOString()
+          },
+          referenceText: ''
+        };
+
+        const resp = await authedFetch('/api/assessment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!resp.ok) {
+          const text = await resp.text().catch(() => '');
+          throw new Error(`persist failed ${resp.status} ${text}`.trim());
+        }
+
+        notesDirty = false;
+        if (entryEl) entryEl.dataset.dirty = '0';
+        if (syncEl) syncEl.textContent = '保存済み';
+      } catch (err) {
+        console.warn('history delete persistence failed', err);
+        const syncEl = document.getElementById(`syncStatus_${idx}`);
+        if (syncEl) syncEl.textContent = '保存に失敗';
+        notesDirty = true;
+        if (entryEl) entryEl.dataset.dirty = '1';
+      } finally {
+        button.disabled = false;
+        updateEntrySummary(idx);
+      }
+    });
+  };
+
+  attachHistoryDeletion(listeningHistoryEl, 'listening');
+  attachHistoryDeletion(translationHistoryEl, 'translation');
+
   async function fetchRemoteNotes(force = false) {
     if (remoteNoteLoading) return;
     if (notesLoaded && !force) return;
@@ -874,6 +983,7 @@ function setupBlock(idx, sentence) {
           if (remoteCount > current) {
             setPronunciationAttempts(idx, remoteCount);
           }
+          updatePronunciationQuotaDisplay();
         }
 
         const remoteListeningHistory = Array.isArray(r.listeningHistory) ? r.listeningHistory : [];
@@ -898,6 +1008,7 @@ function setupBlock(idx, sentence) {
         }
 
   if (syncEl) syncEl.textContent = '';
+        updatePronunciationQuotaDisplay();
       }
     } catch (error) {
       console.warn('fetchRemoteNotes failed', error);
@@ -906,6 +1017,7 @@ function setupBlock(idx, sentence) {
       remoteNoteLoading = false;
       notesLoaded = true;
       updateEntrySummary(idx);
+      updatePronunciationQuotaDisplay();
     }
   }
   // localStorage for in-session persistence; server sync happens when section closes
@@ -941,47 +1053,39 @@ function setupBlock(idx, sentence) {
   }
 
   // save note/translation pair to server sidecar for cross-device sync
-  async function saveNotesToServer(sectionIdx){
+  async function saveNotesToServer(sectionIdx) {
     if (!notesDirty) return;
-    try{
+    try {
       const syncEl = document.getElementById(`syncStatus_${sectionIdx}`);
-    const listening = document.getElementById(`note_${sectionIdx}_input`).value.trim();
-    const translation = document.getElementById(`trans_${sectionIdx}_input`).value.trim();
-    const listeningHistory = loadEvaluationHistory('listening', sectionIdx);
-    const translationHistory = loadEvaluationHistory('translation', sectionIdx);
-    const pronunciationAttempts = getPronunciationAttempts(sectionIdx);
+      const listening = document.getElementById(`note_${sectionIdx}_input`).value.trim();
+      const translation = document.getElementById(`trans_${sectionIdx}_input`).value.trim();
+      const listeningHistory = loadEvaluationHistory('listening', sectionIdx);
+      const translationHistory = loadEvaluationHistory('translation', sectionIdx);
+      const pronunciationAttempts = getPronunciationAttempts(sectionIdx);
       if (syncEl) syncEl.textContent = '保存中…';
       updateEntrySummary(sectionIdx);
-  const pagePrefix = PAGE_PREFIX;
-  const body = { key: pagePrefix + `notes_section_${sectionIdx}`, result: { listening, translation, listeningHistory, translationHistory, pronunciationAttempts, savedAt: new Date().toISOString() }, referenceText: '' };
-  const resp = await authedFetch('/api/assessment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+      const pagePrefix = PAGE_PREFIX;
+      const body = {
+        key: pagePrefix + `notes_section_${sectionIdx}`,
+        result: {
+          listening,
+          translation,
+          listeningHistory,
+          translationHistory,
+          pronunciationAttempts,
+          savedAt: new Date().toISOString()
+        },
+        referenceText: ''
+      };
+
+      const resp = await authedFetch('/api/assessment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
       if (resp && resp.ok) {
-
-  const listeningHistoryEl = document.getElementById(`listeningHistory_${idx}`);
-  const translationHistoryEl = document.getElementById(`translationHistory_${idx}`);
-
-  const handleHistoryDelete = (historyType) => async (event) => {
-    const button = event.target.closest('.history-delete');
-    if (!button) return;
-    event.preventDefault();
-    const entryKey = decodeHistoryEntryKey(button.dataset.key || '');
-    if (!entryKey) return;
-    if (!window.confirm('この評価を削除しますか？')) return;
-    deleteEvaluationHistoryEntry(historyType, idx, entryKey);
-    notesDirty = true;
-    if (entryEl) entryEl.dataset.dirty = '1';
-    const syncEl = document.getElementById(`syncStatus_${idx}`);
-    if (syncEl) syncEl.textContent = '保存中…';
-    try {
-      await saveNotesToServer(idx);
-    } catch (err) {
-      console.warn('history delete persistence failed', err);
-    }
-    updateEntrySummary(idx);
-  };
-
-  if (listeningHistoryEl) listeningHistoryEl.addEventListener('click', handleHistoryDelete('listening'));
-  if (translationHistoryEl) translationHistoryEl.addEventListener('click', handleHistoryDelete('translation'));
         if (syncEl) syncEl.textContent = '保存済み';
         notesDirty = false;
         if (entryEl) entryEl.dataset.dirty = '0';
@@ -993,7 +1097,7 @@ function setupBlock(idx, sentence) {
         if (entryEl) entryEl.dataset.dirty = '1';
       }
       updateEntrySummary(sectionIdx);
-    }catch(e){
+    } catch (e) {
       console.warn('saveNotesToServer failed', e);
       const syncEl = document.getElementById(`syncStatus_${sectionIdx}`);
       if (syncEl) syncEl.textContent = '保存に失敗';
@@ -1020,6 +1124,22 @@ function setupBlock(idx, sentence) {
   let lastRecordedFile = null;
   const resultBox = document.getElementById(`result_${idx}`);
   const recStatus = document.getElementById(`recStatus_${idx}`);
+  const recQuota = document.getElementById(`recQuota_${idx}`);
+
+  function updatePronunciationQuotaDisplay() {
+    if (!recQuota) return;
+    try {
+      const attempts = getPronunciationAttempts(idx);
+      const remaining = Math.max(0, PRONUNCIATION_EVAL_LIMIT - attempts);
+      recQuota.textContent = `残り${remaining}回`;
+      recQuota.style.color = remaining === 0 ? '#b91c1c' : '#059669';
+      recQuota.title = `発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回まで`;
+    } catch (err) {
+      console.warn('updatePronunciationQuotaDisplay failed', err);
+    }
+  }
+
+  updatePronunciationQuotaDisplay();
 
   function disposePendingPreview() {
     if (pendingPreview) {
@@ -1120,6 +1240,7 @@ function setupBlock(idx, sentence) {
         if (assessedTotal > currentAttempts) {
           setPronunciationAttempts(idx, assessedTotal);
         }
+        updatePronunciationQuotaDisplay();
       }
     } catch (error) {
       console.warn('fetchAssessmentsForSection failed', error);
@@ -1127,6 +1248,7 @@ function setupBlock(idx, sentence) {
       assessmentLoading = false;
       assessmentsLoaded = true;
       updateEntrySummary(idx);
+      updatePronunciationQuotaDisplay();
     }
   }
 
@@ -1217,6 +1339,7 @@ function setupBlock(idx, sentence) {
     if (limitReached && recStatus) {
       recStatus.textContent = `発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回までです。`;
     }
+    updatePronunciationQuotaDisplay();
     } catch(e){
       resultBox.textContent = '録音停止エラー: '+e.message;
     } finally {
@@ -1228,6 +1351,7 @@ function setupBlock(idx, sentence) {
         recToggleBtn.textContent = '🎙️ 録音開始';
         recToggleBtn.classList.remove('recording');
       }
+      updatePronunciationQuotaDisplay();
     }
   }
 
@@ -1312,6 +1436,7 @@ function setupBlock(idx, sentence) {
   try { markCardAssessed(idx, s3Key, assessJson, nowIso); } catch(e){}
     displayResults(JSON.stringify(assessJson.result || assessJson?.result || assessJson), idx);
       const attempts = incrementPronunciationAttempts(idx);
+      updatePronunciationQuotaDisplay();
       try {
         const listeningVal = document.getElementById(`note_${idx}_input`)?.value.trim() || '';
         const translationVal = document.getElementById(`trans_${idx}_input`)?.value.trim() || '';
@@ -1348,6 +1473,7 @@ function setupBlock(idx, sentence) {
       if (limitReached && recStatus) {
         recStatus.textContent = `発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回までです。`;
       }
+      updatePronunciationQuotaDisplay();
     }
     updateEntrySummary(idx);
   }
@@ -1360,6 +1486,7 @@ function setupBlock(idx, sentence) {
       alert(`発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回までです。`);
       if (submitBtn) submitBtn.disabled = true;
       if (recStatus) recStatus.textContent = `発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回までです。`;
+      updatePronunciationQuotaDisplay();
       return;
     }
     await uploadFileAndAssess(lastRecordedFile);
@@ -1368,6 +1495,7 @@ function setupBlock(idx, sentence) {
   if (submitBtn && isPronunciationLimitReached(idx)) {
     submitBtn.disabled = true;
     if (recStatus) recStatus.textContent = `発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回までです。`;
+    updatePronunciationQuotaDisplay();
   }
 
   // page-level word toggle removed; per-card controls are used instead
