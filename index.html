@@ -56,6 +56,8 @@
   .evaluation-history { margin-top: 0.75rem; border-top: 1px dashed #d1d5db; padding-top: 0.75rem; display: flex; flex-direction: column; gap: 0.75rem; }
   .history-entry { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
   .history-entry-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: #6b7280; }
+  .history-entry-header .history-delete { background: #f87171; padding: 0.3rem 0.6rem; font-size: 0.8rem; }
+  .history-entry-header .history-delete:hover { background: #dc2626; }
   .history-row { display: flex; gap: 0.5rem; align-items: flex-start; }
   .history-label { font-weight: 600; min-width: 3rem; color: #374151; font-size: 0.9rem; }
   .history-text { flex: 1 1 auto; white-space: pre-wrap; word-break: break-word; font-size: 0.95rem; color: #1f2937; }
@@ -129,6 +131,7 @@ const AUTH_STORAGE_KEY = 'ela_auth_session';
 const authState = { token: null, userId: null, expiresAt: 0 };
 let PAGE_PREFIX = '';
 let currentAuthUserId = null;
+const PASSWORD_OPTIONAL_PREFIX = 'acg2_';
 
 function sanitizeUserIdForClient(id) {
   return String(id || '').trim().replace(/[^A-Za-z0-9._-]/g, '_');
@@ -305,13 +308,23 @@ function saveEvaluationHistory(type, idx, history) {
   }
 }
 
+function deleteEvaluationHistoryEntry(type, idx, entryKey) {
+  const key = typeof entryKey === 'string' ? entryKey : '';
+  if (!key) return loadEvaluationHistory(type, idx);
+  const current = loadEvaluationHistory(type, idx);
+  const filtered = current.filter(entry => evaluationHistoryEntryKey(entry) !== key);
+  saveEvaluationHistory(type, idx, filtered);
+  renderEvaluationHistory(type, idx, filtered);
+  return filtered;
+}
+
 function mergeHistoryEntries(primaryEntries, secondaryEntries = []) {
   const merged = [];
   const seen = new Set();
   const pushEntry = (entry) => {
     const clean = sanitizeHistoryEntry(entry);
     if (!clean) return;
-    const key = `${clean.createdAt}__${clean.input}__${clean.feedback}`;
+    const key = evaluationHistoryEntryKey(clean);
     if (seen.has(key)) return;
     seen.add(key);
     merged.push(clean);
@@ -319,6 +332,45 @@ function mergeHistoryEntries(primaryEntries, secondaryEntries = []) {
   [...(Array.isArray(primaryEntries) ? primaryEntries : []), ...(Array.isArray(secondaryEntries) ? secondaryEntries : [])].forEach(pushEntry);
   merged.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   return merged.slice(0, EVAL_HISTORY_LIMIT);
+}
+
+function evaluationHistoryEntryKey(entry) {
+  if (!entry || typeof entry !== 'object') return '';
+  const created = entry.createdAt || '';
+  const input = entry.input || '';
+  const feedback = entry.feedback || '';
+  return `${created}__${input}__${feedback}`;
+}
+
+function encodeHistoryEntryKey(rawKey) {
+  if (!rawKey) return '';
+  try {
+    const bytes = new TextEncoder().encode(String(rawKey));
+    let binary = '';
+    bytes.forEach(byte => { binary += String.fromCharCode(byte); });
+    return btoa(binary);
+  } catch (err) {
+    try {
+      return btoa(unescape(encodeURIComponent(String(rawKey))));
+    } catch {
+      return String(rawKey);
+    }
+  }
+}
+
+function decodeHistoryEntryKey(encodedKey) {
+  if (!encodedKey) return '';
+  try {
+    const binary = atob(encodedKey);
+    const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  } catch (err) {
+    try {
+      return decodeURIComponent(escape(atob(encodedKey)));
+    } catch {
+      return encodedKey;
+    }
+  }
 }
 
 function formatHistoryTimestamp(isoString) {
@@ -353,6 +405,14 @@ function renderEvaluationHistory(type, idx, entries) {
     const timeEl = document.createElement('time');
     timeEl.textContent = formatHistoryTimestamp(entry.createdAt) || '日時不明';
     header.appendChild(timeEl);
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'history-delete';
+    deleteBtn.textContent = '削除';
+    deleteBtn.dataset.type = type;
+    deleteBtn.dataset.idx = String(idx);
+    deleteBtn.dataset.key = encodeHistoryEntryKey(evaluationHistoryEntryKey(entry));
+    header.appendChild(deleteBtn);
     wrapper.appendChild(header);
 
     const inputRow = document.createElement('div');
@@ -484,9 +544,10 @@ function buildLoginOverlay() {
           ユーザーID
           <input type="text" name="userId" required style="padding:0.6rem;border:1px solid #d1d5db;border-radius:6px;font-size:1rem;" autocomplete="username" />
         </label>
-        <label style="display:flex;flex-direction:column;font-size:0.95rem;color:#374151;gap:4px;">
+        <label class="auth-password-field" style="display:flex;flex-direction:column;font-size:0.95rem;color:#374151;gap:4px;">
           パスワード
           <input type="password" name="password" required style="padding:0.6rem;border:1px solid #d1d5db;border-radius:6px;font-size:1rem;" autocomplete="current-password" />
+          <span class="auth-password-hint" style="display:none;font-size:0.8rem;color:#6b7280;">acg2_で始まるIDはパスワード不要です。</span>
         </label>
         <button type="submit" style="margin-top:4px;background:#2563eb;color:#fff;padding:0.65rem;border-radius:6px;font-size:1rem;font-weight:600;border:none;cursor:pointer;">ログイン</button>
         <div id="authStatus" style="min-height:1.2rem;font-size:0.9rem;color:#dc2626;text-align:center;"></div>
@@ -502,6 +563,23 @@ async function promptForLogin() {
     document.body.appendChild(overlay);
     const form = overlay.querySelector('#authForm');
     const statusEl = overlay.querySelector('#authStatus');
+    const userInput = form?.querySelector('input[name="userId"]');
+    const passwordInput = form?.querySelector('input[name="password"]');
+    const passwordHint = form?.querySelector('.auth-password-hint');
+    const togglePasswordState = (value) => {
+      const raw = typeof value === 'string' ? value.trim() : '';
+      const optional = raw.startsWith(PASSWORD_OPTIONAL_PREFIX);
+      if (passwordInput) {
+        passwordInput.disabled = optional;
+        passwordInput.required = !optional;
+        if (optional) passwordInput.value = '';
+      }
+      if (passwordHint) passwordHint.style.display = optional ? 'block' : 'none';
+    };
+    if (userInput) {
+      togglePasswordState(userInput.value);
+      userInput.addEventListener('input', (ev) => togglePasswordState(ev.target.value));
+    }
     let busy = false;
     form.addEventListener('submit', async (ev) => {
       ev.preventDefault();
@@ -511,8 +589,14 @@ async function promptForLogin() {
       const formData = new FormData(form);
       const userId = String(formData.get('userId') || '').trim();
       const password = String(formData.get('password') || '');
-      if (!userId || !password) {
-        statusEl.textContent = 'ユーザーIDとパスワードを入力してください';
+      const passwordOptional = userId.startsWith(PASSWORD_OPTIONAL_PREFIX);
+      if (!userId) {
+        statusEl.textContent = 'ユーザーIDを入力してください';
+        busy = false;
+        return;
+      }
+      if (!passwordOptional && !password) {
+        statusEl.textContent = 'このIDにはパスワードが必要です';
         busy = false;
         return;
       }
@@ -520,7 +604,7 @@ async function promptForLogin() {
         const res = await fetch('/api/auth', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId, password })
+          body: JSON.stringify({ userId, password: passwordOptional ? '' : password })
         });
         if (!res.ok) {
           const text = await res.text();
@@ -872,6 +956,32 @@ function setupBlock(idx, sentence) {
   const body = { key: pagePrefix + `notes_section_${sectionIdx}`, result: { listening, translation, listeningHistory, translationHistory, pronunciationAttempts, savedAt: new Date().toISOString() }, referenceText: '' };
   const resp = await authedFetch('/api/assessment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (resp && resp.ok) {
+
+  const listeningHistoryEl = document.getElementById(`listeningHistory_${idx}`);
+  const translationHistoryEl = document.getElementById(`translationHistory_${idx}`);
+
+  const handleHistoryDelete = (historyType) => async (event) => {
+    const button = event.target.closest('.history-delete');
+    if (!button) return;
+    event.preventDefault();
+    const entryKey = decodeHistoryEntryKey(button.dataset.key || '');
+    if (!entryKey) return;
+    if (!window.confirm('この評価を削除しますか？')) return;
+    deleteEvaluationHistoryEntry(historyType, idx, entryKey);
+    notesDirty = true;
+    if (entryEl) entryEl.dataset.dirty = '1';
+    const syncEl = document.getElementById(`syncStatus_${idx}`);
+    if (syncEl) syncEl.textContent = '保存中…';
+    try {
+      await saveNotesToServer(idx);
+    } catch (err) {
+      console.warn('history delete persistence failed', err);
+    }
+    updateEntrySummary(idx);
+  };
+
+  if (listeningHistoryEl) listeningHistoryEl.addEventListener('click', handleHistoryDelete('listening'));
+  if (translationHistoryEl) translationHistoryEl.addEventListener('click', handleHistoryDelete('translation'));
         if (syncEl) syncEl.textContent = '保存済み';
         notesDirty = false;
         if (entryEl) entryEl.dataset.dirty = '0';
