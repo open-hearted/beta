@@ -49,6 +49,7 @@
   .evaluation-header { display: flex; align-items: center; gap: 0.75rem; margin: 0 0 0.5rem 0; }
   .evaluation-title { margin: 0; font-size: 1.1rem; color: #374151; }
   .evaluation-header button { margin: 0 0 0 auto; }
+  .eval-quota { font-size: 0.9rem; color: #2563eb; font-weight: 600; }
   .pronunciation-controls { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
   .pronunciation-controls .rec-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 0.65rem 1.1rem; background-color: #2563eb; }
   .pronunciation-controls .rec-toggle.recording { background-color: #dc2626; }
@@ -400,6 +401,7 @@ function renderEvaluationHistory(type, idx, entries) {
     empty.className = 'history-empty';
     empty.textContent = type === 'translation' ? 'まだ翻訳評価はありません。' : 'まだリスニング評価はありません。';
     container.appendChild(empty);
+    updateEvaluationQuotaDisplay(type, idx);
     return;
   }
   history.forEach(entry => {
@@ -447,6 +449,7 @@ function renderEvaluationHistory(type, idx, entries) {
 
     container.appendChild(wrapper);
   });
+  updateEvaluationQuotaDisplay(type, idx);
 }
 
 function appendEvaluationHistory(type, idx, input, feedback, createdAt = null, options = {}) {
@@ -467,6 +470,22 @@ function appendEvaluationHistory(type, idx, input, feedback, createdAt = null, o
 
 function getEvaluationHistoryCount(type, idx) {
   return loadEvaluationHistory(type, idx).length;
+}
+
+function updateEvaluationQuotaDisplay(type, idx) {
+  const el = document.getElementById(`${type}Quota_${idx}`);
+  if (!el) return;
+  const limit = type === 'translation' ? TRANSLATION_EVAL_LIMIT : LISTENING_EVAL_LIMIT;
+  const label = type === 'translation' ? '和訳評価' : '聞き取り評価';
+  try {
+    const count = getEvaluationHistoryCount(type, idx);
+    const remaining = Math.max(0, limit - count);
+    el.textContent = `${label} 残り${remaining}回`;
+    el.style.color = remaining === 0 ? '#b91c1c' : '#2563eb';
+    el.title = `1セクションにつき${limit}回まで`;
+  } catch (err) {
+    console.warn('updateEvaluationQuotaDisplay failed', type, idx, err);
+  }
 }
 
 function pronunciationAttemptsKey(idx) {
@@ -750,6 +769,7 @@ function buildSections() {
         <div class="evaluation-block listening-block">
           <div class="evaluation-header">
             <h3 class="evaluation-title">リスニング評価</h3>
+            <span class="eval-quota" id="listeningQuota_${idx}"></span>
             <button id="note_${idx}_compare">リスニング評価</button>
           </div>
           <textarea id="note_${idx}_input" placeholder="聞こえた文を入力…"></textarea>
@@ -758,6 +778,7 @@ function buildSections() {
         <div class="evaluation-block translation-block">
           <div class="evaluation-header">
             <h3 class="evaluation-title">翻訳評価</h3>
+            <span class="eval-quota" id="translationQuota_${idx}"></span>
             <button id="trans_${idx}_compare">翻訳評価</button>
           </div>
           <textarea id="trans_${idx}_input" placeholder="日本語訳を入力…"></textarea>
@@ -773,7 +794,7 @@ function buildSections() {
           <div class="pronunciation-controls">
             <button id="recToggle_${idx}" class="rec-toggle">🎙️ 録音開始</button>
             <span id="recStatus_${idx}" style="margin-left:8px;color:#4b5563;font-size:0.95rem;"></span>
-            <span id="recQuota_${idx}" style="margin-left:16px;color:#2563eb;font-size:0.95rem;font-weight:600;"></span>
+            <span id="recQuota_${idx}" class="eval-quota" style="margin-left:16px;"></span>
             <span id="recTimer_${idx}" style="margin-left:8px;color:#b91c1c;font-weight:600;"></span>
             <button id="submitBtn_${idx}" class="pronunciation-submit" disabled>発音評価を実行</button>
           </div>
@@ -1105,9 +1126,9 @@ function setupBlock(idx, sentence) {
     try {
       const attempts = getPronunciationAttempts(idx);
       const remaining = Math.max(0, PRONUNCIATION_EVAL_LIMIT - attempts);
-      recQuota.textContent = `残り${remaining}回`;
+      recQuota.textContent = `発音評価 残り${remaining}回`;
       recQuota.style.color = remaining === 0 ? '#b91c1c' : '#2563eb';
-      recQuota.title = `上限${PRONUNCIATION_EVAL_LIMIT}回`;
+      recQuota.title = `発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回まで`;
     } catch (err) {
       console.warn('updatePronunciationQuotaDisplay failed', err);
     }
