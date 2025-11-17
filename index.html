@@ -773,6 +773,7 @@ function buildSections() {
           <div class="pronunciation-controls">
             <button id="recToggle_${idx}" class="rec-toggle">🎙️ 録音開始</button>
             <span id="recStatus_${idx}" style="margin-left:8px;color:#4b5563;font-size:0.95rem;"></span>
+            <span id="recQuota_${idx}" style="margin-left:16px;color:#2563eb;font-size:0.95rem;font-weight:600;"></span>
             <span id="recTimer_${idx}" style="margin-left:8px;color:#b91c1c;font-weight:600;"></span>
             <button id="submitBtn_${idx}" class="pronunciation-submit" disabled>発音評価を実行</button>
           </div>
@@ -956,6 +957,7 @@ function setupBlock(idx, sentence) {
           if (remoteCount > current) {
             setPronunciationAttempts(idx, remoteCount);
           }
+          updatePronunciationQuotaDisplay();
         }
 
         const remoteListeningHistory = Array.isArray(r.listeningHistory) ? r.listeningHistory : [];
@@ -980,6 +982,7 @@ function setupBlock(idx, sentence) {
         }
 
   if (syncEl) syncEl.textContent = '';
+        updatePronunciationQuotaDisplay();
       }
     } catch (error) {
       console.warn('fetchRemoteNotes failed', error);
@@ -988,6 +991,7 @@ function setupBlock(idx, sentence) {
       remoteNoteLoading = false;
       notesLoaded = true;
       updateEntrySummary(idx);
+      updatePronunciationQuotaDisplay();
     }
   }
   // localStorage for in-session persistence; server sync happens when section closes
@@ -1094,6 +1098,22 @@ function setupBlock(idx, sentence) {
   let lastRecordedFile = null;
   const resultBox = document.getElementById(`result_${idx}`);
   const recStatus = document.getElementById(`recStatus_${idx}`);
+  const recQuota = document.getElementById(`recQuota_${idx}`);
+
+  function updatePronunciationQuotaDisplay() {
+    if (!recQuota) return;
+    try {
+      const attempts = getPronunciationAttempts(idx);
+      const remaining = Math.max(0, PRONUNCIATION_EVAL_LIMIT - attempts);
+      recQuota.textContent = `残り${remaining}回`;
+      recQuota.style.color = remaining === 0 ? '#b91c1c' : '#2563eb';
+      recQuota.title = `上限${PRONUNCIATION_EVAL_LIMIT}回`;
+    } catch (err) {
+      console.warn('updatePronunciationQuotaDisplay failed', err);
+    }
+  }
+
+  updatePronunciationQuotaDisplay();
 
   function disposePendingPreview() {
     if (pendingPreview) {
@@ -1194,6 +1214,7 @@ function setupBlock(idx, sentence) {
         if (assessedTotal > currentAttempts) {
           setPronunciationAttempts(idx, assessedTotal);
         }
+        updatePronunciationQuotaDisplay();
       }
     } catch (error) {
       console.warn('fetchAssessmentsForSection failed', error);
@@ -1201,6 +1222,7 @@ function setupBlock(idx, sentence) {
       assessmentLoading = false;
       assessmentsLoaded = true;
       updateEntrySummary(idx);
+      updatePronunciationQuotaDisplay();
     }
   }
 
@@ -1291,6 +1313,7 @@ function setupBlock(idx, sentence) {
     if (limitReached && recStatus) {
       recStatus.textContent = `発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回までです。`;
     }
+    updatePronunciationQuotaDisplay();
     } catch(e){
       resultBox.textContent = '録音停止エラー: '+e.message;
     } finally {
@@ -1302,6 +1325,7 @@ function setupBlock(idx, sentence) {
         recToggleBtn.textContent = '🎙️ 録音開始';
         recToggleBtn.classList.remove('recording');
       }
+      updatePronunciationQuotaDisplay();
     }
   }
 
@@ -1386,6 +1410,7 @@ function setupBlock(idx, sentence) {
   try { markCardAssessed(idx, s3Key, assessJson, nowIso); } catch(e){}
     displayResults(JSON.stringify(assessJson.result || assessJson?.result || assessJson), idx);
       const attempts = incrementPronunciationAttempts(idx);
+      updatePronunciationQuotaDisplay();
       try {
         const listeningVal = document.getElementById(`note_${idx}_input`)?.value.trim() || '';
         const translationVal = document.getElementById(`trans_${idx}_input`)?.value.trim() || '';
@@ -1422,6 +1447,7 @@ function setupBlock(idx, sentence) {
       if (limitReached && recStatus) {
         recStatus.textContent = `発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回までです。`;
       }
+      updatePronunciationQuotaDisplay();
     }
     updateEntrySummary(idx);
   }
@@ -1434,6 +1460,7 @@ function setupBlock(idx, sentence) {
       alert(`発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回までです。`);
       if (submitBtn) submitBtn.disabled = true;
       if (recStatus) recStatus.textContent = `発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回までです。`;
+      updatePronunciationQuotaDisplay();
       return;
     }
     await uploadFileAndAssess(lastRecordedFile);
@@ -1442,6 +1469,7 @@ function setupBlock(idx, sentence) {
   if (submitBtn && isPronunciationLimitReached(idx)) {
     submitBtn.disabled = true;
     if (recStatus) recStatus.textContent = `発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回までです。`;
+    updatePronunciationQuotaDisplay();
   }
 
   // page-level word toggle removed; per-card controls are used instead
