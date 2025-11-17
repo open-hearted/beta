@@ -52,10 +52,12 @@
   .evaluation-header .eval-quota { margin-left: auto; }
   .eval-quota { font-size: 0.9rem; color: #059669; font-weight: 600; }
   .pronunciation-controls { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
-  .pronunciation-controls .eval-quota { margin-left: auto; }
+  .pronunciation-controls .eval-quota { margin-left: 0; }
   .pronunciation-controls .rec-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 0.65rem 1.1rem; background-color: #2563eb; }
   .pronunciation-controls .rec-toggle.recording { background-color: #dc2626; }
-  .pronunciation-controls .pronunciation-submit { margin-left: auto; }
+  .pronunciation-controls .pronunciation-submit { margin-left: 0; }
+  .pronunciation-status { color: #4b5563; font-size: 0.95rem; }
+  .pronunciation-timer { color: #b91c1c; font-weight: 600; }
   .evaluation-history { margin-top: 0.75rem; border-top: 1px dashed #d1d5db; padding-top: 0.75rem; display: flex; flex-direction: column; gap: 0.75rem; }
   .history-entry { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
   .history-entry-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: #6b7280; }
@@ -795,8 +797,8 @@ function buildSections() {
           <div class="content script-content secondary-script-content" style="display:none;"></div>
           <div class="pronunciation-controls">
             <button id="recToggle_${idx}" class="rec-toggle">🎙️ 録音開始</button>
-            <span id="recStatus_${idx}" style="margin-left:8px;color:#4b5563;font-size:0.95rem;"></span>
-            <span id="recTimer_${idx}" style="margin-left:8px;color:#b91c1c;font-weight:600;"></span>
+            <span id="recStatus_${idx}" class="pronunciation-status"></span>
+            <span id="recTimer_${idx}" class="pronunciation-timer"></span>
             <span id="recQuota_${idx}" class="eval-quota"></span>
             <button id="submitBtn_${idx}" class="pronunciation-submit" disabled>発音評価を実行</button>
           </div>
