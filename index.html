@@ -48,9 +48,11 @@
   .evaluation-block { background: #f9fafb; border: 1px solid #d1d5db; border-radius: 10px; padding: 1rem; margin-top: 1rem; }
   .evaluation-header { display: flex; align-items: center; gap: 0.75rem; margin: 0 0 0.5rem 0; }
   .evaluation-title { margin: 0; font-size: 1.1rem; color: #374151; }
-  .evaluation-header button { margin: 0 0 0 auto; }
-  .eval-quota { font-size: 0.9rem; color: #2563eb; font-weight: 600; }
+  .evaluation-header button { margin: 0; }
+  .evaluation-header .eval-quota { margin-left: auto; }
+  .eval-quota { font-size: 0.9rem; color: #059669; font-weight: 600; }
   .pronunciation-controls { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+  .pronunciation-controls .eval-quota { margin-left: auto; }
   .pronunciation-controls .rec-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 0.65rem 1.1rem; background-color: #2563eb; }
   .pronunciation-controls .rec-toggle.recording { background-color: #dc2626; }
   .pronunciation-controls .pronunciation-submit { margin-left: auto; }
@@ -480,9 +482,9 @@ function updateEvaluationQuotaDisplay(type, idx) {
   try {
     const count = getEvaluationHistoryCount(type, idx);
     const remaining = Math.max(0, limit - count);
-    el.textContent = `${label} 残り${remaining}回`;
-    el.style.color = remaining === 0 ? '#b91c1c' : '#2563eb';
-    el.title = `1セクションにつき${limit}回まで`;
+    el.textContent = `残り${remaining}回`;
+    el.style.color = remaining === 0 ? '#b91c1c' : '#059669';
+    el.title = `${label}は1セクションにつき${limit}回まで`;
   } catch (err) {
     console.warn('updateEvaluationQuotaDisplay failed', type, idx, err);
   }
@@ -794,8 +796,8 @@ function buildSections() {
           <div class="pronunciation-controls">
             <button id="recToggle_${idx}" class="rec-toggle">🎙️ 録音開始</button>
             <span id="recStatus_${idx}" style="margin-left:8px;color:#4b5563;font-size:0.95rem;"></span>
-            <span id="recQuota_${idx}" class="eval-quota" style="margin-left:16px;"></span>
             <span id="recTimer_${idx}" style="margin-left:8px;color:#b91c1c;font-weight:600;"></span>
+            <span id="recQuota_${idx}" class="eval-quota"></span>
             <button id="submitBtn_${idx}" class="pronunciation-submit" disabled>発音評価を実行</button>
           </div>
           <pre id="result_${idx}" style="margin:0;padding:0;"></pre>
@@ -1126,8 +1128,8 @@ function setupBlock(idx, sentence) {
     try {
       const attempts = getPronunciationAttempts(idx);
       const remaining = Math.max(0, PRONUNCIATION_EVAL_LIMIT - attempts);
-      recQuota.textContent = `発音評価 残り${remaining}回`;
-      recQuota.style.color = remaining === 0 ? '#b91c1c' : '#2563eb';
+      recQuota.textContent = `残り${remaining}回`;
+      recQuota.style.color = remaining === 0 ? '#b91c1c' : '#059669';
       recQuota.title = `発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回まで`;
     } catch (err) {
       console.warn('updatePronunciationQuotaDisplay failed', err);
