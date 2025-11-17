@@ -349,11 +349,12 @@ function encodeHistoryEntryKey(rawKey) {
     let binary = '';
     bytes.forEach(byte => { binary += String.fromCharCode(byte); });
     return btoa(binary);
-  } catch (err) {
+  } catch (primaryErr) {
     try {
       return btoa(unescape(encodeURIComponent(String(rawKey))));
-    } catch {
-      return String(rawKey);
+    } catch (secondaryErr) {
+      console.warn('encodeHistoryEntryKey failed', primaryErr, secondaryErr);
+      return '';
     }
   }
 }
@@ -364,23 +365,9 @@ function decodeHistoryEntryKey(encodedKey) {
     const binary = atob(encodedKey);
     const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
     return new TextDecoder().decode(bytes);
-  } catch (err) {
-    try {
-      return decodeURIComponent(escape(atob(encodedKey)));
-    } catch {
-      return encodedKey;
-    }
-  }
-}
-
-function formatHistoryTimestamp(isoString) {
-  if (!isoString) return '';
-  const d = new Date(isoString);
-  if (Number.isNaN(d.getTime())) return '';
-  try {
-    return d.toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-  } catch (e) {
-    return d.toISOString();
+  } catch (primaryErr) {
+    console.warn('decodeHistoryEntryKey failed', primaryErr);
+    return '';
   }
 }
 
@@ -836,6 +823,82 @@ function setupBlock(idx, sentence) {
   let assessmentsLoaded = false;
   let assessmentLoading = false;
 
+  const listeningHistoryEl = document.getElementById(`listeningHistory_${idx}`);
+  const translationHistoryEl = document.getElementById(`translationHistory_${idx}`);
+
+  const attachHistoryDeletion = (historyEl, historyType) => {
+    if (!historyEl) return;
+    historyEl.addEventListener('click', async (event) => {
+      const button = event.target.closest('.history-delete');
+      if (!button) return;
+      event.preventDefault();
+      const encodedKey = button.dataset.key || '';
+      const entryKey = decodeHistoryEntryKey(encodedKey);
+      if (!entryKey) return;
+      if (!confirm('この評価を削除しますか？')) return;
+      button.disabled = true;
+      try {
+        const beforeLength = loadEvaluationHistory(historyType, idx).length;
+        const filtered = deleteEvaluationHistoryEntry(historyType, idx, entryKey);
+        if (filtered.length === beforeLength) {
+          return;
+        }
+
+        notesDirty = true;
+        if (entryEl) entryEl.dataset.dirty = '1';
+        const syncEl = document.getElementById(`syncStatus_${idx}`);
+        if (syncEl) syncEl.textContent = '保存中…';
+        updateEntrySummary(idx);
+
+        const listeningVal = noteInput.value.trim();
+        const translationVal = transInput.value.trim();
+        const latestListeningHistory = loadEvaluationHistory('listening', idx);
+        const latestTranslationHistory = loadEvaluationHistory('translation', idx);
+        const pronunciationAttempts = getPronunciationAttempts(idx);
+        const pagePrefix = PAGE_PREFIX || computePagePrefix();
+        const payload = {
+          key: pagePrefix + `notes_section_${idx}`,
+          result: {
+            listening: listeningVal,
+            translation: translationVal,
+            listeningHistory: latestListeningHistory,
+            translationHistory: latestTranslationHistory,
+            pronunciationAttempts,
+            savedAt: new Date().toISOString()
+          },
+          referenceText: ''
+        };
+
+        const resp = await authedFetch('/api/assessment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!resp.ok) {
+          const text = await resp.text().catch(() => '');
+          throw new Error(`persist failed ${resp.status} ${text}`.trim());
+        }
+
+        notesDirty = false;
+        if (entryEl) entryEl.dataset.dirty = '0';
+        if (syncEl) syncEl.textContent = '保存済み';
+      } catch (err) {
+        console.warn('history delete persistence failed', err);
+        const syncEl = document.getElementById(`syncStatus_${idx}`);
+        if (syncEl) syncEl.textContent = '保存に失敗';
+        notesDirty = true;
+        if (entryEl) entryEl.dataset.dirty = '1';
+      } finally {
+        button.disabled = false;
+        updateEntrySummary(idx);
+      }
+    });
+  };
+
+  attachHistoryDeletion(listeningHistoryEl, 'listening');
+  attachHistoryDeletion(translationHistoryEl, 'translation');
+
   async function fetchRemoteNotes(force = false) {
     if (remoteNoteLoading) return;
     if (notesLoaded && !force) return;
@@ -941,47 +1004,39 @@ function setupBlock(idx, sentence) {
   }
 
   // save note/translation pair to server sidecar for cross-device sync
-  async function saveNotesToServer(sectionIdx){
+  async function saveNotesToServer(sectionIdx) {
     if (!notesDirty) return;
-    try{
+    try {
       const syncEl = document.getElementById(`syncStatus_${sectionIdx}`);
-    const listening = document.getElementById(`note_${sectionIdx}_input`).value.trim();
-    const translation = document.getElementById(`trans_${sectionIdx}_input`).value.trim();
-    const listeningHistory = loadEvaluationHistory('listening', sectionIdx);
-    const translationHistory = loadEvaluationHistory('translation', sectionIdx);
-    const pronunciationAttempts = getPronunciationAttempts(sectionIdx);
+      const listening = document.getElementById(`note_${sectionIdx}_input`).value.trim();
+      const translation = document.getElementById(`trans_${sectionIdx}_input`).value.trim();
+      const listeningHistory = loadEvaluationHistory('listening', sectionIdx);
+      const translationHistory = loadEvaluationHistory('translation', sectionIdx);
+      const pronunciationAttempts = getPronunciationAttempts(sectionIdx);
       if (syncEl) syncEl.textContent = '保存中…';
       updateEntrySummary(sectionIdx);
-  const pagePrefix = PAGE_PREFIX;
-  const body = { key: pagePrefix + `notes_section_${sectionIdx}`, result: { listening, translation, listeningHistory, translationHistory, pronunciationAttempts, savedAt: new Date().toISOString() }, referenceText: '' };
-  const resp = await authedFetch('/api/assessment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+      const pagePrefix = PAGE_PREFIX;
+      const body = {
+        key: pagePrefix + `notes_section_${sectionIdx}`,
+        result: {
+          listening,
+          translation,
+          listeningHistory,
+          translationHistory,
+          pronunciationAttempts,
+          savedAt: new Date().toISOString()
+        },
+        referenceText: ''
+      };
+
+      const resp = await authedFetch('/api/assessment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
       if (resp && resp.ok) {
-
-  const listeningHistoryEl = document.getElementById(`listeningHistory_${idx}`);
-  const translationHistoryEl = document.getElementById(`translationHistory_${idx}`);
-
-  const handleHistoryDelete = (historyType) => async (event) => {
-    const button = event.target.closest('.history-delete');
-    if (!button) return;
-    event.preventDefault();
-    const entryKey = decodeHistoryEntryKey(button.dataset.key || '');
-    if (!entryKey) return;
-    if (!window.confirm('この評価を削除しますか？')) return;
-    deleteEvaluationHistoryEntry(historyType, idx, entryKey);
-    notesDirty = true;
-    if (entryEl) entryEl.dataset.dirty = '1';
-    const syncEl = document.getElementById(`syncStatus_${idx}`);
-    if (syncEl) syncEl.textContent = '保存中…';
-    try {
-      await saveNotesToServer(idx);
-    } catch (err) {
-      console.warn('history delete persistence failed', err);
-    }
-    updateEntrySummary(idx);
-  };
-
-  if (listeningHistoryEl) listeningHistoryEl.addEventListener('click', handleHistoryDelete('listening'));
-  if (translationHistoryEl) translationHistoryEl.addEventListener('click', handleHistoryDelete('translation'));
         if (syncEl) syncEl.textContent = '保存済み';
         notesDirty = false;
         if (entryEl) entryEl.dataset.dirty = '0';
@@ -993,7 +1048,7 @@ function setupBlock(idx, sentence) {
         if (entryEl) entryEl.dataset.dirty = '1';
       }
       updateEntrySummary(sectionIdx);
-    }catch(e){
+    } catch (e) {
       console.warn('saveNotesToServer failed', e);
       const syncEl = document.getElementById(`syncStatus_${sectionIdx}`);
       if (syncEl) syncEl.textContent = '保存に失敗';
