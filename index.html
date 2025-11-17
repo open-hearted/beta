@@ -52,10 +52,9 @@
   .evaluation-header .eval-quota { margin-left: auto; }
   .eval-quota { font-size: 0.9rem; color: #059669; font-weight: 600; }
   .pronunciation-controls { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
-  .pronunciation-controls .eval-quota { margin-left: 0; }
+  .pronunciation-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
   .pronunciation-controls .rec-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 0.65rem 1.1rem; background-color: #2563eb; }
   .pronunciation-controls .rec-toggle.recording { background-color: #dc2626; }
-  .pronunciation-controls .pronunciation-submit { margin-left: 0; }
   .pronunciation-status { color: #4b5563; font-size: 0.95rem; }
   .pronunciation-timer { color: #b91c1c; font-weight: 600; }
   .evaluation-history { margin-top: 0.75rem; border-top: 1px dashed #d1d5db; padding-top: 0.75rem; display: flex; flex-direction: column; gap: 0.75rem; }
@@ -799,8 +798,10 @@ function buildSections() {
             <button id="recToggle_${idx}" class="rec-toggle">🎙️ 録音開始</button>
             <span id="recStatus_${idx}" class="pronunciation-status"></span>
             <span id="recTimer_${idx}" class="pronunciation-timer"></span>
-            <span id="recQuota_${idx}" class="eval-quota"></span>
-            <button id="submitBtn_${idx}" class="pronunciation-submit" disabled>発音評価を実行</button>
+            <div class="pronunciation-actions">
+              <span id="recQuota_${idx}" class="eval-quota"></span>
+              <button id="submitBtn_${idx}" class="pronunciation-submit" disabled>発音評価を実行</button>
+            </div>
           </div>
           <pre id="result_${idx}" style="margin:0;padding:0;"></pre>
           <div id="pendingPreview_${idx}" class="pending-preview"></div>
