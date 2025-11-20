@@ -2,12 +2,10 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 
 const USERS_ENV = process.env.AUTH_USERS || process.env.APP_AUTH_USERS || '';
-const ADMIN_USERS_ENV = process.env.ADMIN_USERS || process.env.AUTH_ADMINS || '';
 const AUTH_SECRET = process.env.AUTH_SECRET || process.env.JWT_SECRET || process.env.AUTH_JWT_SECRET;
 const PASSWORD_OPTIONAL_PREFIX = 'acg2_';
 
 let cachedUsers = null;
-let cachedAdmins = null;
 
 function sanitizeSegment(segment) {
   return String(segment || '').trim().replace(/[^A-Za-z0-9._-]/g, '_');
@@ -62,28 +60,6 @@ function getUserHash(userId) {
   const safeId = sanitizeUserId(userId);
   const map = parseUsers();
   return map.get(safeId) || null;
-}
-
-function parseAdmins() {
-  if (cachedAdmins) return cachedAdmins;
-  const set = new Set();
-  if (ADMIN_USERS_ENV) {
-    ADMIN_USERS_ENV.split(/[\s,]+/)
-      .map(entry => entry && entry.trim())
-      .filter(Boolean)
-      .forEach(entry => set.add(sanitizeUserId(entry)));
-  }
-  if (!set.size) {
-    set.add(sanitizeUserId('admin'));
-  }
-  cachedAdmins = set;
-  return set;
-}
-
-function isAdminUser(userId) {
-  if (!userId) return false;
-  const safeId = sanitizeUserId(userId);
-  return parseAdmins().has(safeId);
 }
 
 async function verifyUserPassword(userId, password) {
@@ -185,16 +161,6 @@ function requireAuth(req, res) {
   }
 }
 
-function requireAdmin(req, res) {
-  const user = requireAuth(req, res);
-  if (!user) return null;
-  if (!isAdminUser(user.id) && !isAdminUser(user.safeId)) {
-    res.status(403).json({ error: 'Forbidden' });
-    return null;
-  }
-  return user;
-}
-
 async function authenticateUser(userId, password) {
   if (!userId) return null;
   if (isPasswordOptionalUser(userId)) {
@@ -240,11 +206,9 @@ function keyBelongsToUser(userId, key) {
 module.exports = {
   authenticateUser,
   requireAuth,
-  requireAdmin,
   signToken,
   verifyToken,
   isPasswordOptionalUser,
-  isAdminUser,
   sanitizeUserId,
   ensureUserScopedPrefix,
   ensureUserScopedKey,
