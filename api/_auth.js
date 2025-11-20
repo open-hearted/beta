@@ -4,8 +4,10 @@ const crypto = require('crypto');
 const USERS_ENV = process.env.AUTH_USERS || process.env.APP_AUTH_USERS || '';
 const AUTH_SECRET = process.env.AUTH_SECRET || process.env.JWT_SECRET || process.env.AUTH_JWT_SECRET;
 const PASSWORD_OPTIONAL_PREFIX = 'acg2_';
+const ADMINS_ENV = process.env.AUTH_ADMINS || process.env.APP_AUTH_ADMINS || process.env.ADMIN_USERS || '';
 
 let cachedUsers = null;
+let cachedAdmins = null;
 
 function sanitizeSegment(segment) {
   return String(segment || '').trim().replace(/[^A-Za-z0-9._-]/g, '_');
@@ -54,6 +56,60 @@ function parseUsers() {
   }
   cachedUsers = map;
   return map;
+}
+
+function parseAdmins() {
+  if (cachedAdmins) return cachedAdmins;
+  const set = new Set();
+  if (!ADMINS_ENV) {
+    cachedAdmins = set;
+    return set;
+  }
+  try {
+    const parsed = JSON.parse(ADMINS_ENV);
+    if (Array.isArray(parsed)) {
+      for (const entry of parsed) {
+        if (!entry) continue;
+        if (typeof entry === 'string') {
+          const id = sanitizeSegment(entry);
+          if (id) set.add(id);
+          continue;
+        }
+        const id = sanitizeSegment(entry.id || entry.userId || entry.user || entry.name);
+        if (id) set.add(id);
+      }
+    } else if (typeof parsed === 'object') {
+      for (const [key, value] of Object.entries(parsed)) {
+        const idFromKey = sanitizeSegment(key);
+        if (value === true || value === 'admin' || value === 1) {
+          if (idFromKey) set.add(idFromKey);
+          continue;
+        }
+        if (value && typeof value === 'object') {
+          const candidate = sanitizeSegment(value.id || value.userId || value.user || value.name || key);
+          if (candidate) set.add(candidate);
+          continue;
+        }
+        if (idFromKey) set.add(idFromKey);
+      }
+    }
+  } catch (err) {
+    const items = ADMINS_ENV.split(/[,;\n\r]+/);
+    for (const raw of items) {
+      const id = sanitizeSegment(raw);
+      if (id) set.add(id);
+    }
+  }
+  cachedAdmins = set;
+  return set;
+}
+
+function isAdminUser(userId) {
+  if (!userId) return false;
+  const safeId = sanitizeUserId(userId);
+  if (!safeId) return false;
+  const admins = parseAdmins();
+  return admins.has(safeId);
 }
 
 function getUserHash(userId) {
@@ -161,6 +217,16 @@ function requireAuth(req, res) {
   }
 }
 
+function requireAdmin(req, res) {
+  const user = requireAuth(req, res);
+  if (!user) return null;
+  if (isAdminUser(user.id) || isAdminUser(user.safeId)) {
+    return user;
+  }
+  res.status(403).json({ error: 'Forbidden' });
+  return null;
+}
+
 async function authenticateUser(userId, password) {
   if (!userId) return null;
   if (isPasswordOptionalUser(userId)) {
@@ -206,11 +272,13 @@ function keyBelongsToUser(userId, key) {
 module.exports = {
   authenticateUser,
   requireAuth,
+  requireAdmin,
   signToken,
   verifyToken,
   isPasswordOptionalUser,
   sanitizeUserId,
   ensureUserScopedPrefix,
   ensureUserScopedKey,
-  keyBelongsToUser
+  keyBelongsToUser,
+  isAdminUser
 };

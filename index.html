@@ -261,9 +261,182 @@ function logoutUser(options = {}) {
 }
 
 const EVAL_HISTORY_LIMIT = 20;
-const LISTENING_EVAL_LIMIT = 10;
-const TRANSLATION_EVAL_LIMIT = 10;
-const PRONUNCIATION_EVAL_LIMIT = 10;
+let LISTENING_EVAL_LIMIT = 10;
+let TRANSLATION_EVAL_LIMIT = 10;
+let PRONUNCIATION_EVAL_LIMIT = 10;
+
+const USAGE_TYPE_FIELD_MAP = Object.freeze({
+  listening: 'listeningUsed',
+  translation: 'translationUsed',
+  pronunciation: 'pronunciationUsed'
+});
+
+class QuotaError extends Error {
+  constructor(message, detail = null) {
+    super(message);
+    this.name = 'QuotaError';
+    this.detail = detail;
+  }
+}
+
+const quotaState = {
+  initialized: false,
+  loading: false,
+  usage: {
+    listeningUsed: 0,
+    translationUsed: 0,
+    pronunciationUsed: 0,
+    resetAt: null,
+    updatedAt: null
+  },
+  limits: {
+    listening: LISTENING_EVAL_LIMIT,
+    translation: TRANSLATION_EVAL_LIMIT,
+    pronunciation: PRONUNCIATION_EVAL_LIMIT
+  },
+  remaining: {
+    listening: Infinity,
+    translation: Infinity,
+    pronunciation: Infinity
+  },
+  storage: null,
+  error: null
+};
+
+function coerceLimitValue(value, fallback) {
+  if (value === undefined) {
+    return fallback;
+  }
+  if (value === null || value === 'unlimited') {
+    return Infinity;
+  }
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) return Infinity;
+  return Math.floor(num);
+}
+
+function recomputeQuotaRemaining() {
+  const next = { listening: Infinity, translation: Infinity, pronunciation: Infinity };
+  for (const type of Object.keys(USAGE_TYPE_FIELD_MAP)) {
+    const limit = quotaState.limits[type];
+    const field = USAGE_TYPE_FIELD_MAP[type];
+    const used = Number(quotaState.usage[field] || 0);
+    if (!Number.isFinite(limit) || limit <= 0) {
+      next[type] = Infinity;
+    } else {
+      next[type] = Math.max(0, Math.floor(limit) - Math.max(0, Math.floor(used)));
+    }
+  }
+  quotaState.remaining = next;
+}
+
+function applyQuotaPayload(payload = {}, options = {}) {
+  if (payload.limits && typeof payload.limits === 'object') {
+    quotaState.limits = {
+      listening: coerceLimitValue(payload.limits.listening, quotaState.limits.listening),
+      translation: coerceLimitValue(payload.limits.translation, quotaState.limits.translation),
+      pronunciation: coerceLimitValue(payload.limits.pronunciation, quotaState.limits.pronunciation)
+    };
+    LISTENING_EVAL_LIMIT = quotaState.limits.listening;
+    TRANSLATION_EVAL_LIMIT = quotaState.limits.translation;
+    PRONUNCIATION_EVAL_LIMIT = quotaState.limits.pronunciation;
+  }
+
+  if (payload.usage && typeof payload.usage === 'object') {
+    quotaState.usage = Object.assign({}, quotaState.usage, payload.usage);
+  }
+
+  if (payload.remaining && typeof payload.remaining === 'object') {
+    quotaState.remaining = Object.assign({}, quotaState.remaining, payload.remaining);
+  } else {
+    recomputeQuotaRemaining();
+  }
+
+  if (payload.storage) quotaState.storage = payload.storage;
+  quotaState.error = payload.error || null;
+  quotaState.initialized = true;
+
+  if (!options || options.silent !== true) {
+    updateAllQuotaDisplays();
+  }
+}
+
+function getGlobalQuotaRemaining(type) {
+  if (!quotaState.initialized) return Infinity;
+  const value = quotaState.remaining?.[type];
+  if (value === null || value === undefined) return Infinity;
+  if (!Number.isFinite(value)) return Infinity;
+  return Math.max(0, value);
+}
+
+function isGlobalQuotaExhausted(type) {
+  if (!quotaState.initialized) return false;
+  const remaining = getGlobalQuotaRemaining(type);
+  return Number.isFinite(remaining) && remaining <= 0;
+}
+
+async function refreshUsageState(options = {}) {
+  if (quotaState.loading && options.skipIfLoading) return quotaState;
+  quotaState.loading = true;
+  try {
+    const res = await authedFetch('/api/usage', { method: 'GET' });
+    const payload = await res.json().catch(() => null);
+    if (res.ok) {
+      applyQuotaPayload(payload || {}, options);
+    } else {
+      const message = payload?.error || `usage fetch failed (${res.status})`;
+      quotaState.error = message;
+      if (!options || options.silent !== true) {
+        console.warn(message);
+      }
+    }
+  } catch (err) {
+    quotaState.error = err;
+    if (!options || options.silent !== true) {
+      console.warn('refreshUsageState failed', err);
+    }
+  } finally {
+    quotaState.loading = false;
+  }
+  return quotaState;
+}
+
+async function reserveQuotaUsage(type, amount = 1) {
+  const normalizedType = typeof type === 'string' ? type.trim().toLowerCase() : '';
+  if (!normalizedType) throw new Error('type is required');
+  const payload = { type: normalizedType, amount }; // optimistic payload; server validates amount
+  try {
+    const res = await authedFetch('/api/usage', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const body = await res.json().catch(() => null);
+    if (res.status === 429) {
+      applyQuotaPayload(body || {}, { silent: true });
+      throw new QuotaError('AI利用回数の上限に達しました。', body?.limitExceeded || null);
+    }
+    if (!res.ok) {
+      const message = body?.error || `usage update failed (${res.status})`;
+      throw new Error(message);
+    }
+    applyQuotaPayload(body || {}, { silent: false });
+    return body;
+  } catch (err) {
+    if (err instanceof QuotaError) throw err;
+    quotaState.error = err;
+    throw err;
+  }
+}
+
+function updateAllQuotaDisplays() {
+  if (!Array.isArray(sentences)) return;
+  for (let idx = 0; idx < sentences.length; idx += 1) {
+    updateEvaluationQuotaDisplay('listening', idx);
+    updateEvaluationQuotaDisplay('translation', idx);
+    updatePronunciationQuotaDisplay(idx);
+  }
+}
 
 function evaluationHistoryKey(type, idx) {
   return `${type}History_${idx}`;
@@ -482,10 +655,24 @@ function updateEvaluationQuotaDisplay(type, idx) {
   const label = type === 'translation' ? '和訳評価' : '聞き取り評価';
   try {
     const count = getEvaluationHistoryCount(type, idx);
-    const remaining = Math.max(0, limit - count);
-    el.textContent = `残り${remaining}回`;
-    el.style.color = remaining === 0 ? '#b91c1c' : '#059669';
-    el.title = `${label}は1セクションにつき${limit}回まで`;
+    const sectionRemaining = Number.isFinite(limit) ? Math.max(0, Math.floor(limit) - count) : Infinity;
+    const globalRemaining = getGlobalQuotaRemaining(type);
+    const remaining = Number.isFinite(sectionRemaining)
+      ? (Number.isFinite(globalRemaining) ? Math.min(sectionRemaining, globalRemaining) : sectionRemaining)
+      : globalRemaining;
+    const remainingDisplay = Number.isFinite(remaining) ? remaining : '∞';
+    let suffix = '';
+    if (Number.isFinite(globalRemaining) && globalRemaining < sectionRemaining) {
+      suffix = ` (全体${globalRemaining}回)`;
+    }
+    el.textContent = `残り${remainingDisplay}回${suffix}`;
+    const exhausted = (Number.isFinite(remaining) && remaining <= 0) || (Number.isFinite(globalRemaining) && globalRemaining <= 0);
+    el.style.color = exhausted ? '#b91c1c' : '#059669';
+    if (Number.isFinite(limit)) {
+      el.title = `${label}は1セクションにつき${limit}回まで`;
+    } else {
+      el.title = `${label}のローカル上限はありません`;
+    }
   } catch (err) {
     console.warn('updateEvaluationQuotaDisplay failed', type, idx, err);
   }
@@ -525,10 +712,52 @@ function incrementPronunciationAttempts(idx) {
 
 function isPronunciationLimitReached(idx) {
   try {
-    return getPronunciationAttempts(idx) >= PRONUNCIATION_EVAL_LIMIT;
+    if (isGlobalQuotaExhausted('pronunciation')) return true;
+    if (!Number.isFinite(PRONUNCIATION_EVAL_LIMIT)) return false;
+    return getPronunciationAttempts(idx) >= Math.floor(PRONUNCIATION_EVAL_LIMIT);
   } catch (e) {
     console.warn('isPronunciationLimitReached failed', e);
     return false;
+  }
+}
+
+function updatePronunciationQuotaDisplay(idx) {
+  const recQuota = document.getElementById(`recQuota_${idx}`);
+  if (!recQuota) return;
+  try {
+    const attempts = getPronunciationAttempts(idx);
+    const localLimit = PRONUNCIATION_EVAL_LIMIT;
+    const localRemaining = Number.isFinite(localLimit)
+      ? Math.max(0, Math.floor(localLimit) - attempts)
+      : Infinity;
+    const globalRemaining = getGlobalQuotaRemaining('pronunciation');
+    const remaining = Number.isFinite(localRemaining)
+      ? (Number.isFinite(globalRemaining) ? Math.min(localRemaining, globalRemaining) : localRemaining)
+      : globalRemaining;
+    const displayValue = Number.isFinite(remaining) ? remaining : '∞';
+    let suffix = '';
+    if (Number.isFinite(globalRemaining) && globalRemaining < localRemaining) {
+      suffix = ` (全体${globalRemaining}回)`;
+    }
+    recQuota.textContent = `残り${displayValue}回${suffix}`;
+    const exhausted = (Number.isFinite(remaining) && remaining <= 0) || (Number.isFinite(globalRemaining) && globalRemaining <= 0);
+    recQuota.style.color = exhausted ? '#b91c1c' : '#059669';
+    if (Number.isFinite(localLimit)) {
+      recQuota.title = `発音評価は1セクションにつき${localLimit}回まで`;
+    } else {
+      recQuota.title = '発音評価のローカル上限はありません';
+    }
+  } catch (err) {
+    console.warn('updatePronunciationQuotaDisplay failed', err);
+  }
+}
+
+function setPronunciationLimitMessage(statusEl) {
+  if (!statusEl) return;
+  if (isGlobalQuotaExhausted('pronunciation')) {
+    statusEl.textContent = 'AI利用回数の上限に達しました。';
+  } else if (Number.isFinite(PRONUNCIATION_EVAL_LIMIT)) {
+    statusEl.textContent = `発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回までです。`;
   }
 }
 
@@ -983,7 +1212,7 @@ function setupBlock(idx, sentence) {
           if (remoteCount > current) {
             setPronunciationAttempts(idx, remoteCount);
           }
-          updatePronunciationQuotaDisplay();
+          updatePronunciationQuotaDisplay(idx);
         }
 
         const remoteListeningHistory = Array.isArray(r.listeningHistory) ? r.listeningHistory : [];
@@ -1008,7 +1237,7 @@ function setupBlock(idx, sentence) {
         }
 
   if (syncEl) syncEl.textContent = '';
-        updatePronunciationQuotaDisplay();
+        updatePronunciationQuotaDisplay(idx);
       }
     } catch (error) {
       console.warn('fetchRemoteNotes failed', error);
@@ -1017,7 +1246,7 @@ function setupBlock(idx, sentence) {
       remoteNoteLoading = false;
       notesLoaded = true;
       updateEntrySummary(idx);
-      updatePronunciationQuotaDisplay();
+      updatePronunciationQuotaDisplay(idx);
     }
   }
   // localStorage for in-session persistence; server sync happens when section closes
@@ -1124,22 +1353,8 @@ function setupBlock(idx, sentence) {
   let lastRecordedFile = null;
   const resultBox = document.getElementById(`result_${idx}`);
   const recStatus = document.getElementById(`recStatus_${idx}`);
-  const recQuota = document.getElementById(`recQuota_${idx}`);
 
-  function updatePronunciationQuotaDisplay() {
-    if (!recQuota) return;
-    try {
-      const attempts = getPronunciationAttempts(idx);
-      const remaining = Math.max(0, PRONUNCIATION_EVAL_LIMIT - attempts);
-      recQuota.textContent = `残り${remaining}回`;
-      recQuota.style.color = remaining === 0 ? '#b91c1c' : '#059669';
-      recQuota.title = `発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回まで`;
-    } catch (err) {
-      console.warn('updatePronunciationQuotaDisplay failed', err);
-    }
-  }
-
-  updatePronunciationQuotaDisplay();
+  updatePronunciationQuotaDisplay(idx);
 
   function disposePendingPreview() {
     if (pendingPreview) {
@@ -1240,7 +1455,7 @@ function setupBlock(idx, sentence) {
         if (assessedTotal > currentAttempts) {
           setPronunciationAttempts(idx, assessedTotal);
         }
-        updatePronunciationQuotaDisplay();
+        updatePronunciationQuotaDisplay(idx);
       }
     } catch (error) {
       console.warn('fetchAssessmentsForSection failed', error);
@@ -1248,7 +1463,7 @@ function setupBlock(idx, sentence) {
       assessmentLoading = false;
       assessmentsLoaded = true;
       updateEntrySummary(idx);
-      updatePronunciationQuotaDisplay();
+      updatePronunciationQuotaDisplay(idx);
     }
   }
 
@@ -1336,10 +1551,10 @@ function setupBlock(idx, sentence) {
     try{ if (recorderRef.timerId) clearInterval(recorderRef.timerId); const tEl = document.getElementById(`recTimer_${idx}`); if (tEl) tEl.textContent = ''; }catch(e){}
     const limitReached = isPronunciationLimitReached(idx);
     if (submitBtn) submitBtn.disabled = limitReached;
-    if (limitReached && recStatus) {
-      recStatus.textContent = `発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回までです。`;
+    if (limitReached) {
+      setPronunciationLimitMessage(recStatus);
     }
-    updatePronunciationQuotaDisplay();
+    updatePronunciationQuotaDisplay(idx);
     } catch(e){
       resultBox.textContent = '録音停止エラー: '+e.message;
     } finally {
@@ -1351,7 +1566,7 @@ function setupBlock(idx, sentence) {
         recToggleBtn.textContent = '🎙️ 録音開始';
         recToggleBtn.classList.remove('recording');
       }
-      updatePronunciationQuotaDisplay();
+      updatePronunciationQuotaDisplay(idx);
     }
   }
 
@@ -1390,6 +1605,13 @@ function setupBlock(idx, sentence) {
   // upload blob/file to /api/upload with prefix per section
   async function uploadFileAndAssess(fileBlob){
     resultBox.textContent = 'アップロード中...';
+    if (isGlobalQuotaExhausted('pronunciation')) {
+      setPronunciationLimitMessage(recStatus);
+      updatePronunciationQuotaDisplay(idx);
+      resultBox.textContent = 'AI利用回数の上限に達しました。';
+      if (submitBtn) submitBtn.disabled = true;
+      return;
+    }
     const fd = new FormData();
     fd.append('file', new File([fileBlob], fileBlob.name || `rec_${Date.now()}.wav`, { type: fileBlob.type || 'audio/wav' }));
     const prefix = PAGE_PREFIX + `section_${idx}/`;
@@ -1424,7 +1646,18 @@ function setupBlock(idx, sentence) {
   resultBox.textContent = 'アップロード完了。評価中…';
       // call azure-assess
     const referenceText = sentence;
-  const assessResp = await authedFetch(API_ASSESS, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ audioUrl, referenceText, language: 'en-US' }) });
+      try {
+        await reserveQuotaUsage('pronunciation');
+      } catch (quotaErr) {
+        setPronunciationLimitMessage(recStatus);
+        updatePronunciationQuotaDisplay(idx);
+        if (quotaErr instanceof QuotaError) {
+          throw new Error('AI利用回数の上限に達しました。');
+        }
+        throw quotaErr;
+      }
+      updatePronunciationQuotaDisplay(idx);
+      const assessResp = await authedFetch(API_ASSESS, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ audioUrl, referenceText, language: 'en-US' }) });
       if (!assessResp.ok) { const t = await assessResp.text(); throw new Error('azure-assess failed: '+assessResp.status+' '+t); }
       const assessJson = await assessResp.json();
       // save assessment sidecar: key should be s3Key
@@ -1436,7 +1669,7 @@ function setupBlock(idx, sentence) {
   try { markCardAssessed(idx, s3Key, assessJson, nowIso); } catch(e){}
     displayResults(JSON.stringify(assessJson.result || assessJson?.result || assessJson), idx);
       const attempts = incrementPronunciationAttempts(idx);
-      updatePronunciationQuotaDisplay();
+      updatePronunciationQuotaDisplay(idx);
       try {
         const listeningVal = document.getElementById(`note_${idx}_input`)?.value.trim() || '';
         const translationVal = document.getElementById(`trans_${idx}_input`)?.value.trim() || '';
@@ -1470,10 +1703,10 @@ function setupBlock(idx, sentence) {
     } finally {
       const limitReached = isPronunciationLimitReached(idx);
       if (submitBtn) submitBtn.disabled = limitReached || !lastRecordedFile;
-      if (limitReached && recStatus) {
-        recStatus.textContent = `発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回までです。`;
+      if (limitReached) {
+        setPronunciationLimitMessage(recStatus);
       }
-      updatePronunciationQuotaDisplay();
+      updatePronunciationQuotaDisplay(idx);
     }
     updateEntrySummary(idx);
   }
@@ -1483,10 +1716,14 @@ function setupBlock(idx, sentence) {
     resultBox.textContent = '';
     if (!lastRecordedFile) { resultBox.textContent = '録音を行ってから「発音評価を実行」を押してください。'; return; }
     if (isPronunciationLimitReached(idx)) {
-      alert(`発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回までです。`);
+      if (isGlobalQuotaExhausted('pronunciation')) {
+        alert('AI利用回数の上限に達しました。');
+      } else if (Number.isFinite(PRONUNCIATION_EVAL_LIMIT)) {
+        alert(`発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回までです。`);
+      }
       if (submitBtn) submitBtn.disabled = true;
-      if (recStatus) recStatus.textContent = `発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回までです。`;
-      updatePronunciationQuotaDisplay();
+      setPronunciationLimitMessage(recStatus);
+      updatePronunciationQuotaDisplay(idx);
       return;
     }
     await uploadFileAndAssess(lastRecordedFile);
@@ -1494,8 +1731,8 @@ function setupBlock(idx, sentence) {
 
   if (submitBtn && isPronunciationLimitReached(idx)) {
     submitBtn.disabled = true;
-    if (recStatus) recStatus.textContent = `発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回までです。`;
-    updatePronunciationQuotaDisplay();
+    setPronunciationLimitMessage(recStatus);
+    updatePronunciationQuotaDisplay(idx);
   }
 
   // page-level word toggle removed; per-card controls are used instead
@@ -1504,6 +1741,7 @@ function setupBlock(idx, sentence) {
 // ChatGPT連携（日本語プロンプト）
 async function callChatGPT({ type, idx, inputEl, referenceText, buttonEl }) {
   const isTranslation = type === 'translation';
+  const quotaType = isTranslation ? 'translation' : 'listening';
   const textValue = inputEl?.value ?? '';
   const userText = String(textValue).trim();
   if (!userText) {
@@ -1511,16 +1749,19 @@ async function callChatGPT({ type, idx, inputEl, referenceText, buttonEl }) {
     return;
   }
 
-  if (!isTranslation) {
-    const existing = getEvaluationHistoryCount('listening', idx);
-    if (existing >= LISTENING_EVAL_LIMIT) {
-      alert(`聞き取り評価は1セクションにつき${LISTENING_EVAL_LIMIT}回までです。`);
-      return;
-    }
-  } else {
-    const existing = getEvaluationHistoryCount('translation', idx);
-    if (existing >= TRANSLATION_EVAL_LIMIT) {
-      alert(`翻訳評価は1セクションにつき${TRANSLATION_EVAL_LIMIT}回までです。`);
+  if (isGlobalQuotaExhausted(quotaType)) {
+    alert('AI利用回数の上限に達しました。');
+    updateEvaluationQuotaDisplay(quotaType, idx);
+    return;
+  }
+
+  const localLimit = isTranslation ? TRANSLATION_EVAL_LIMIT : LISTENING_EVAL_LIMIT;
+  if (Number.isFinite(localLimit)) {
+    const existing = getEvaluationHistoryCount(quotaType, idx);
+    if (existing >= Math.floor(localLimit)) {
+      const label = isTranslation ? '翻訳評価' : '聞き取り評価';
+      alert(`${label}は1セクションにつき${localLimit}回までです。`);
+      updateEvaluationQuotaDisplay(quotaType, idx);
       return;
     }
   }
@@ -1539,6 +1780,7 @@ async function callChatGPT({ type, idx, inputEl, referenceText, buttonEl }) {
   }
 
   try {
+    await reserveQuotaUsage(quotaType);
     const systemPrompt = prompt.system;
     const userPrompt = prompt.template.replace("{{student}}", userText).replace("{{reference}}", referenceText);
     const body = { model: 'gpt-4', messages: [ { role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt } ] };
@@ -1586,9 +1828,15 @@ async function callChatGPT({ type, idx, inputEl, referenceText, buttonEl }) {
     if (entryEl) entryEl.dataset.dirty = '0';
     const syncEl = document.getElementById(`syncStatus_${idx}`);
     if (syncEl) syncEl.textContent = '保存済み';
+    updateEvaluationQuotaDisplay(quotaType, idx);
   } catch (e) {
-    console.warn('callChatGPT failed', e);
-    alert(`評価に失敗しました: ${e.message}`);
+    if (e instanceof QuotaError) {
+      alert('AI利用回数の上限に達しました。');
+      updateEvaluationQuotaDisplay(quotaType, idx);
+    } else {
+      console.warn('callChatGPT failed', e);
+      alert(`評価に失敗しました: ${e.message}`);
+    }
   } finally {
     if (buttonEl) {
       buttonEl.disabled = false;
@@ -1887,9 +2135,11 @@ updateAuthBar();
 (async function bootstrap(){
   try {
     await ensureAuthenticated();
+    await refreshUsageState({ silent: true, skipIfLoading: true });
     currentAuthUserId = authState.userId;
     PAGE_PREFIX = computePagePrefix();
     buildSections();
+    updateAllQuotaDisplays();
   } catch (e) {
     console.error('initialization failed', e);
   }
