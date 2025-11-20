@@ -3,6 +3,8 @@
 const { requireAuth } = require('./_auth');
 const {
   DEFAULT_LIMITS,
+  PER_SECTION_LIMITS,
+  SECTION_COUNT,
   getUsage,
   incrementUsage,
   computeRemaining,
@@ -48,6 +50,8 @@ function buildUsagePayload(entry) {
     ok: true,
     usage,
     limits,
+    perSectionLimits: PER_SECTION_LIMITS,
+    sectionCount: SECTION_COUNT,
     remaining,
     storage: isUsingMemoryStore() ? 'memory' : 's3'
   };

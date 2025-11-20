@@ -3,6 +3,8 @@
 const { requireAdmin, sanitizeUserId } = require('./_auth');
 const {
   DEFAULT_LIMITS,
+  PER_SECTION_LIMITS,
+  SECTION_COUNT,
   listUsage,
   resetUsage,
   deleteUsage,
@@ -58,6 +60,12 @@ module.exports = async (req, res) => {
           translation: DEFAULT_LIMITS.translation,
           pronunciation: DEFAULT_LIMITS.pronunciation
         },
+        perSectionLimits: {
+          listening: PER_SECTION_LIMITS.listening,
+          translation: PER_SECTION_LIMITS.translation,
+          pronunciation: PER_SECTION_LIMITS.pronunciation
+        },
+        sectionCount: SECTION_COUNT,
         storage: isUsingMemoryStore() ? 'memory' : 's3'
       });
     }

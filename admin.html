@@ -31,6 +31,7 @@
     .badge-green { background: #d1fae5; color: #047857; }
     .badge-red { background: #fee2e2; color: #b91c1c; }
     .badge-gray { background: #e5e7eb; color: #4b5563; }
+    .usage-compact { font-variant-numeric: tabular-nums; white-space: nowrap; }
     .empty-state { text-align: center; padding: 2rem; font-size: 1rem; color: #6b7280; }
     .hidden { display: none; }
     @media (max-width: 768px) {
@@ -89,6 +90,8 @@
   const authState = { token: null, userId: null, expiresAt: 0 };
   let usageSnapshot = [];
   let limitsSnapshot = { listening: 0, translation: 0, pronunciation: 0 };
+  let perSectionLimitsSnapshot = { listening: 10, translation: 10, pronunciation: 10 };
+  let sectionCountSnapshot = 1;
   let storageMode = 's3';
 
   function sanitizeUserIdForClient(id) {
@@ -281,12 +284,31 @@
     }
   }
 
+  function formatLimitValue(value) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return '∞';
+    return String(Math.max(0, Math.floor(num)));
+  }
+
+  function resolveGlobalLimitForType(type) {
+    const rawLimit = Number(limitsSnapshot?.[type]);
+    if (Number.isFinite(rawLimit) && rawLimit > 0) {
+      return Math.floor(rawLimit);
+    }
+    const perSection = Number(perSectionLimitsSnapshot?.[type]);
+    if (!Number.isFinite(perSection) || perSection <= 0) {
+      return Infinity;
+    }
+    return Math.max(1, Math.floor(perSection)) * Math.max(1, sectionCountSnapshot);
+  }
+
   function formatUsageCell(used, remaining, limit) {
     const usedValue = Number(used) || 0;
     const remainingValue = Number.isFinite(remaining) ? remaining : '∞';
     const limitValue = Number.isFinite(limit) ? limit : '∞';
-    const badgeClass = Number.isFinite(remaining) && remaining <= 0 ? 'badge badge-red' : 'badge badge-green';
-    return `<div>${usedValue} / ${limitValue}</div><div class="${badgeClass}">残り ${remainingValue}</div>`;
+    const titleParts = [`上限: ${limitValue}`, `残り: ${remainingValue}`];
+    const title = titleParts.join(' | ');
+    return `<span class="usage-compact" title="${title}">${usedValue} / ${limitValue}</span>`;
   }
 
   function renderStatusBar() {
@@ -301,10 +323,14 @@
       return anyLimited;
     }).length;
     const storageLabel = storageMode === 'memory' ? 'メモリ (再起動で消去されます)' : 'S3 永続化';
+    const sectionInfo = `セクション数: ${sectionCountSnapshot}`;
+    const perSectionText = `1セクション上限: 聞${formatLimitValue(perSectionLimitsSnapshot.listening)} / 訳${formatLimitValue(perSectionLimitsSnapshot.translation)} / 発${formatLimitValue(perSectionLimitsSnapshot.pronunciation)}`;
     statusBar.innerHTML = `
       <div>現在のユーザー数: <strong>${count}</strong></div>
       <div>警戒レベルのユーザー: <strong>${limitedUsers}</strong></div>
       <div>保存モード: <span class="badge ${storageMode === 'memory' ? 'badge-red' : 'badge-green'}">${storageLabel}</span></div>
+      <div>${sectionInfo}</div>
+      <div>${perSectionText}</div>
     `;
     statusBar.classList.remove('hidden');
   }
@@ -320,18 +346,19 @@
     }, { listening: 0, translation: 0, pronunciation: 0 });
 
     const cards = [
-      { key: 'listening', label: 'リスニング合計', value: totals.listening, limit: limitsSnapshot.listening },
-      { key: 'translation', label: '翻訳合計', value: totals.translation, limit: limitsSnapshot.translation },
-      { key: 'pronunciation', label: '発音合計', value: totals.pronunciation, limit: limitsSnapshot.pronunciation }
+      { key: 'listening', label: 'リスニング合計', value: totals.listening, limit: resolveGlobalLimitForType('listening') },
+      { key: 'translation', label: '翻訳合計', value: totals.translation, limit: resolveGlobalLimitForType('translation') },
+      { key: 'pronunciation', label: '発音合計', value: totals.pronunciation, limit: resolveGlobalLimitForType('pronunciation') }
     ];
 
     grid.innerHTML = cards.map(card => {
-      const limitText = Number.isFinite(card.limit) ? `${card.limit} 回` : '制限なし';
+      const limitValue = Number.isFinite(card.limit) ? Math.max(0, Math.floor(card.limit)) : '∞';
+      const remaining = Number.isFinite(card.limit) ? Math.max(0, limitValue - (Number(card.value) || 0)) : '∞';
       return `
         <div class="summary-card">
           <h2>${card.label}</h2>
-          <p>${card.value}</p>
-          <div style="font-size:0.85rem;color:#4b5563;">上限: ${limitText}</div>
+          <p>${card.value} / ${limitValue}</p>
+          <div style="font-size:0.85rem;color:#4b5563;">残り: ${remaining}</div>
         </div>
       `;
     }).join('');
@@ -369,9 +396,9 @@
       return;
     }
     const rows = filtered.map(entry => {
-      const listeningCell = formatUsageCell(entry.listeningUsed, entry.remaining?.listening, limitsSnapshot.listening);
-      const translationCell = formatUsageCell(entry.translationUsed, entry.remaining?.translation, limitsSnapshot.translation);
-      const pronunciationCell = formatUsageCell(entry.pronunciationUsed, entry.remaining?.pronunciation, limitsSnapshot.pronunciation);
+      const listeningCell = formatUsageCell(entry.listeningUsed, entry.remaining?.listening, resolveGlobalLimitForType('listening'));
+      const translationCell = formatUsageCell(entry.translationUsed, entry.remaining?.translation, resolveGlobalLimitForType('translation'));
+      const pronunciationCell = formatUsageCell(entry.pronunciationUsed, entry.remaining?.pronunciation, resolveGlobalLimitForType('pronunciation'));
       const updated = formatDateTime(entry.updatedAt || entry.resetAt);
       const userIdDisplay = entry.id || entry.safeId;
       return `
@@ -406,7 +433,14 @@
       }
       const data = await res.json();
       usageSnapshot = Array.isArray(data.items) ? data.items : [];
-      limitsSnapshot = Object.assign({}, data.limits || {});
+      limitsSnapshot = Object.assign({}, limitsSnapshot, data.limits || {});
+      perSectionLimitsSnapshot = Object.assign({}, perSectionLimitsSnapshot, data.perSectionLimits || {});
+      if (data.sectionCount !== undefined) {
+        const parsedCount = Number(data.sectionCount);
+        if (Number.isFinite(parsedCount) && parsedCount > 0) {
+          sectionCountSnapshot = Math.max(1, Math.floor(parsedCount));
+        }
+      }
       storageMode = data.storage || 's3';
       renderStatusBar();
       renderSummaryCards();

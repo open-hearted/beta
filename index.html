@@ -261,9 +261,14 @@ function logoutUser(options = {}) {
 }
 
 const EVAL_HISTORY_LIMIT = 20;
-let LISTENING_EVAL_LIMIT = 10;
-let TRANSLATION_EVAL_LIMIT = 10;
-let PRONUNCIATION_EVAL_LIMIT = 10;
+const DEFAULT_SECTION_LIMIT = 10;
+const DEFAULT_SECTION_COUNT = sentences.length;
+let sectionCount = DEFAULT_SECTION_COUNT;
+let sectionLimits = {
+  listening: DEFAULT_SECTION_LIMIT,
+  translation: DEFAULT_SECTION_LIMIT,
+  pronunciation: DEFAULT_SECTION_LIMIT
+};
 
 const USAGE_TYPE_FIELD_MAP = Object.freeze({
   listening: 'listeningUsed',
@@ -279,6 +284,13 @@ class QuotaError extends Error {
   }
 }
 
+function computeGlobalLimitFromSections(type) {
+  const perSection = sectionLimits[type];
+  if (!Number.isFinite(perSection) || perSection <= 0) return Infinity;
+  const count = Math.max(1, sectionCount);
+  return perSection * count;
+}
+
 const quotaState = {
   initialized: false,
   loading: false,
@@ -290,15 +302,16 @@ const quotaState = {
     updatedAt: null
   },
   limits: {
-    listening: LISTENING_EVAL_LIMIT,
-    translation: TRANSLATION_EVAL_LIMIT,
-    pronunciation: PRONUNCIATION_EVAL_LIMIT
+    listening: computeGlobalLimitFromSections('listening'),
+    translation: computeGlobalLimitFromSections('translation'),
+    pronunciation: computeGlobalLimitFromSections('pronunciation')
   },
   remaining: {
     listening: Infinity,
     translation: Infinity,
     pronunciation: Infinity
   },
+  sectionCount,
   storage: null,
   error: null
 };
@@ -331,15 +344,34 @@ function recomputeQuotaRemaining() {
 }
 
 function applyQuotaPayload(payload = {}, options = {}) {
+  if (payload.sectionCount !== undefined) {
+    const parsedCount = Number(payload.sectionCount);
+    if (Number.isFinite(parsedCount) && parsedCount > 0) {
+      sectionCount = Math.max(1, Math.floor(parsedCount));
+      quotaState.sectionCount = sectionCount;
+    }
+  }
+
+  if (payload.perSectionLimits && typeof payload.perSectionLimits === 'object') {
+    sectionLimits = {
+      listening: coerceLimitValue(payload.perSectionLimits.listening, sectionLimits.listening),
+      translation: coerceLimitValue(payload.perSectionLimits.translation, sectionLimits.translation),
+      pronunciation: coerceLimitValue(payload.perSectionLimits.pronunciation, sectionLimits.pronunciation)
+    };
+  }
+
   if (payload.limits && typeof payload.limits === 'object') {
     quotaState.limits = {
       listening: coerceLimitValue(payload.limits.listening, quotaState.limits.listening),
       translation: coerceLimitValue(payload.limits.translation, quotaState.limits.translation),
       pronunciation: coerceLimitValue(payload.limits.pronunciation, quotaState.limits.pronunciation)
     };
-    LISTENING_EVAL_LIMIT = quotaState.limits.listening;
-    TRANSLATION_EVAL_LIMIT = quotaState.limits.translation;
-    PRONUNCIATION_EVAL_LIMIT = quotaState.limits.pronunciation;
+  } else if (!quotaState.initialized || payload.perSectionLimits || payload.sectionCount !== undefined) {
+    quotaState.limits = {
+      listening: computeGlobalLimitFromSections('listening'),
+      translation: computeGlobalLimitFromSections('translation'),
+      pronunciation: computeGlobalLimitFromSections('pronunciation')
+    };
   }
 
   if (payload.usage && typeof payload.usage === 'object') {
@@ -651,7 +683,7 @@ function getEvaluationHistoryCount(type, idx) {
 function updateEvaluationQuotaDisplay(type, idx) {
   const el = document.getElementById(`${type}Quota_${idx}`);
   if (!el) return;
-  const limit = type === 'translation' ? TRANSLATION_EVAL_LIMIT : LISTENING_EVAL_LIMIT;
+  const limit = type === 'translation' ? sectionLimits.translation : sectionLimits.listening;
   const label = type === 'translation' ? '和訳評価' : '聞き取り評価';
   try {
     const count = getEvaluationHistoryCount(type, idx);
@@ -719,8 +751,8 @@ function incrementPronunciationAttempts(idx) {
 function isPronunciationLimitReached(idx) {
   try {
     if (isGlobalQuotaExhausted('pronunciation')) return true;
-    if (!Number.isFinite(PRONUNCIATION_EVAL_LIMIT)) return false;
-    return getPronunciationAttempts(idx) >= Math.floor(PRONUNCIATION_EVAL_LIMIT);
+    if (!Number.isFinite(sectionLimits.pronunciation)) return false;
+    return getPronunciationAttempts(idx) >= Math.floor(sectionLimits.pronunciation);
   } catch (e) {
     console.warn('isPronunciationLimitReached failed', e);
     return false;
@@ -732,7 +764,7 @@ function updatePronunciationQuotaDisplay(idx) {
   if (!recQuota) return;
   try {
     const attempts = getPronunciationAttempts(idx);
-    const localLimit = PRONUNCIATION_EVAL_LIMIT;
+    const localLimit = sectionLimits.pronunciation;
     const localRemaining = Number.isFinite(localLimit)
       ? Math.max(0, Math.floor(localLimit) - attempts)
       : Infinity;
@@ -768,8 +800,8 @@ function setPronunciationLimitMessage(statusEl) {
   if (!statusEl) return;
   if (isGlobalQuotaExhausted('pronunciation')) {
     statusEl.textContent = 'AI利用回数の上限に達しました。';
-  } else if (Number.isFinite(PRONUNCIATION_EVAL_LIMIT)) {
-    statusEl.textContent = `発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回までです。`;
+  } else if (Number.isFinite(sectionLimits.pronunciation)) {
+    statusEl.textContent = `発音評価は1セクションにつき${sectionLimits.pronunciation}回までです。`;
   }
 }
 
@@ -1730,8 +1762,8 @@ function setupBlock(idx, sentence) {
     if (isPronunciationLimitReached(idx)) {
       if (isGlobalQuotaExhausted('pronunciation')) {
         alert('AI利用回数の上限に達しました。');
-      } else if (Number.isFinite(PRONUNCIATION_EVAL_LIMIT)) {
-        alert(`発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回までです。`);
+      } else if (Number.isFinite(sectionLimits.pronunciation)) {
+        alert(`発音評価は1セクションにつき${sectionLimits.pronunciation}回までです。`);
       }
       if (submitBtn) submitBtn.disabled = true;
       setPronunciationLimitMessage(recStatus);
@@ -1767,7 +1799,7 @@ async function callChatGPT({ type, idx, inputEl, referenceText, buttonEl }) {
     return;
   }
 
-  const localLimit = isTranslation ? TRANSLATION_EVAL_LIMIT : LISTENING_EVAL_LIMIT;
+  const localLimit = isTranslation ? sectionLimits.translation : sectionLimits.listening;
   if (Number.isFinite(localLimit)) {
     const existing = getEvaluationHistoryCount(quotaType, idx);
     if (existing >= Math.floor(localLimit)) {
