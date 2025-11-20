@@ -326,7 +326,7 @@
     ];
 
     grid.innerHTML = cards.map(card => {
-      const limitText = Number.isFinite(card.limit) ? `${card.limit} / 日` : '制限なし';
+      const limitText = Number.isFinite(card.limit) ? `${card.limit} 回` : '制限なし';
       return `
         <div class="summary-card">
           <h2>${card.label}</h2>

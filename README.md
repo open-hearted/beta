@@ -10,9 +10,9 @@ This project records AI usage counts per user in Amazon S3 so that quotas persis
 | --- | --- |
 | `USAGE_S3_BUCKET` | S3 bucket used to store per-user quota JSON files. |
 | `AWS_REGION` | Region for the S3 client (defaults to `ap-northeast-1`). |
-| `LISTENING_USAGE_LIMIT` | Daily cap for listening evaluations (default `10`). |
-| `TRANSLATION_USAGE_LIMIT` | Daily cap for translation evaluations (default `10`). |
-| `PRONUNCIATION_USAGE_LIMIT` | Daily cap for pronunciation assessments (default `10`). |
+| `LISTENING_USAGE_LIMIT` | Maximum listening evaluations permitted for the section (default `10`). |
+| `TRANSLATION_USAGE_LIMIT` | Maximum translation evaluations permitted for the section (default `10`). |
+| `PRONUNCIATION_USAGE_LIMIT` | Maximum pronunciation assessments permitted for the section (default `10`). |
 | `AUTH_USERS` | JSON/string map of user IDs to password hashes. |
 | `AUTH_ADMINS` | Comma-separated list or JSON collection of admin user IDs. |
 | `AUTH_SECRET` | Secret used to sign auth tokens. |
