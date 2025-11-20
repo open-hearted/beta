@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>クォータ管理ダッシュボード</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #f3f4f6; margin: 0; color: #111827; }
+    header { background: #1f2937; color: #f9fafb; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
+    header h1 { margin: 0; font-size: 1.3rem; }
+    main { max-width: 960px; margin: 24px auto; padding: 0 16px 48px; }
+    section { background: #ffffff; border-radius: 12px; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12); padding: 24px; }
+    .controls { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
+    button { background: #2563eb; color: #fff; border: none; padding: 0.6rem 1.2rem; border-radius: 8px; cursor: pointer; font-size: 0.95rem; }
+    button:hover { background: #1d4ed8; }
+    button:disabled { background: #9ca3af; cursor: not-allowed; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px 12px; border-bottom: 1px solid #e5e7eb; text-align: left; }
+    th { background: #f9fafb; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.02em; color: #6b7280; }
+    tbody tr:hover { background: #f3f4ff; }
+    .quota-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; background: #ecfdf5; color: #047857; border-radius: 999px; font-size: 0.85rem; }
+    .quota-pill strong { font-size: 0.95rem; }
+    .status-badge { display: inline-block; padding: 4px 8px; border-radius: 999px; font-size: 0.8rem; background: #eef2ff; color: #3730a3; }
+    .status-badge.admin { background: #fde68a; color: #92400e; margin-left: 4px; }
+    .empty { text-align: center; color: #6b7280; padding: 32px 0; }
+    #statusMessage { font-size: 0.9rem; color: #2563eb; }
+    #statusMessage.error { color: #dc2626; }
+    .limit-summary { font-size: 0.9rem; color: #4b5563; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>クォータ管理ダッシュボード</h1>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span id="authUserDisplay">未ログイン</span>
+      <button id="logoutBtn" type="button">ログアウト</button>
+    </div>
+  </header>
+  <main>
+    <section>
+      <div class="limit-summary" id="limitSummary"></div>
+      <div class="controls">
+        <button id="refreshBtn" type="button">最新状態を取得</button>
+        <span id="statusMessage"></span>
+      </div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>ユーザーID</th>
+              <th>ロール</th>
+              <th>聞き取り</th>
+              <th>和訳</th>
+              <th>発音</th>
+              <th>最終リセット</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="usersTableBody">
+            <tr><td colspan="7" class="empty">データを読み込んでいます…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+  (() => {
+    const AUTH_STORAGE_KEY = 'ela_auth_session';
+    const PASSWORD_OPTIONAL_PREFIX = 'acg2_';
+    const quotaLimits = { listening: 10, translation: 10, pronunciation: 10 };
+
+    const authState = { token: null, userId: null, expiresAt: 0 };
+
+    const authDisplay = document.getElementById('authUserDisplay');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const statusMessage = document.getElementById('statusMessage');
+    const tableBody = document.getElementById('usersTableBody');
+    const limitSummary = document.getElementById('limitSummary');
+
+    function setStatus(text, options = {}) {
+      statusMessage.textContent = text || '';
+      statusMessage.className = options.type === 'error' ? 'error' : '';
+    }
+
+    function updateLimitSummary() {
+      limitSummary.textContent = `各評価の上限: 聞き取り ${quotaLimits.listening} / 和訳 ${quotaLimits.translation} / 発音 ${quotaLimits.pronunciation}`;
+    }
+
+    function setAuthState(session) {
+      authState.token = session.token;
+      authState.userId = session.userId;
+      authState.expiresAt = session.expiresAt || 0;
+      try {
+        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authState));
+      } catch (err) {
+        console.warn('auth persist failed', err);
+      }
+      updateAuthDisplay();
+    }
+
+    function clearAuthState() {
+      authState.token = null;
+      authState.userId = null;
+      authState.expiresAt = 0;
+      try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch {}
+      updateAuthDisplay();
+    }
+
+    function updateAuthDisplay() {
+      if (authState.userId) {
+        authDisplay.textContent = `ログイン中: ${authState.userId}`;
+      } else {
+        authDisplay.textContent = '未ログイン';
+      }
+    }
+
+    function loadSessionFromStorage() {
+      try {
+        const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || !parsed.token || !parsed.userId) return null;
+        return parsed;
+      } catch (err) {
+        console.warn('load session failed', err);
+        return null;
+      }
+    }
+
+    function authedFetch(url, options = {}) {
+      if (!authState.token) throw new Error('Missing auth token');
+      const headers = Object.assign({}, options.headers || {}, {
+        Authorization: `Bearer ${authState.token}`
+      });
+      return fetch(url, { ...options, headers });
+    }
+
+    async function validateToken() {
+      if (!authState.token) return false;
+      try {
+        const res = await fetch('/api/auth', {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${authState.token}` }
+        });
+        if (!res.ok) return false;
+        const data = await res.json().catch(() => null);
+        if (!data || !data.userId) return false;
+        authState.userId = data.userId;
+        authState.expiresAt = data.expiresAt || 0;
+        updateAuthDisplay();
+        return true;
+      } catch (err) {
+        console.warn('token validation failed', err);
+        return false;
+      }
+    }
+
+    function buildLoginOverlay() {
+      const overlay = document.createElement('div');
+      overlay.style = 'position:fixed;inset:0;background:rgba(17,24,39,0.86);display:flex;align-items:center;justify-content:center;z-index:9999;';
+      overlay.innerHTML = `
+        <div style="background:#fff;border-radius:12px;padding:24px;min-width:320px;max-width:360px;">
+          <h2 style="margin:0 0 16px 0;font-size:1.2rem;color:#111827;text-align:center;">管理者ログイン</h2>
+          <form id="adminAuthForm" style="display:flex;flex-direction:column;gap:12px;">
+            <label style="display:flex;flex-direction:column;font-size:0.95rem;color:#374151;gap:4px;">
+              ユーザーID
+              <input type="text" name="userId" required style="padding:0.6rem;border:1px solid #d1d5db;border-radius:6px;font-size:1rem;" autocomplete="username" />
+            </label>
+            <label class="password-field" style="display:flex;flex-direction:column;font-size:0.95rem;color:#374151;gap:4px;">
+              パスワード
+              <input type="password" name="password" required style="padding:0.6rem;border:1px solid #d1d5db;border-radius:6px;font-size:1rem;" autocomplete="current-password" />
+              <span class="password-hint" style="display:none;font-size:0.8rem;color:#6b7280;">acg2_で始まるIDはパスワード不要です。</span>
+            </label>
+            <button type="submit" style="margin-top:4px;background:#2563eb;color:#fff;padding:0.65rem;border-radius:6px;font-size:1rem;font-weight:600;border:none;cursor:pointer;">ログイン</button>
+            <div id="authError" style="min-height:1.2rem;font-size:0.9rem;color:#dc2626;text-align:center;"></div>
+          </form>
+        </div>
+      `;
+      return overlay;
+    }
+
+    function attachLoginHandlers(overlay) {
+      const form = overlay.querySelector('#adminAuthForm');
+      const statusEl = overlay.querySelector('#authError');
+      const userInput = form?.querySelector('input[name="userId"]');
+      const passwordInput = form?.querySelector('input[name="password"]');
+      const passwordHint = form?.querySelector('.password-hint');
+
+      const togglePasswordState = (value) => {
+        const raw = typeof value === 'string' ? value.trim() : '';
+        const optional = raw.startsWith(PASSWORD_OPTIONAL_PREFIX);
+        if (passwordInput) {
+          passwordInput.disabled = optional;
+          passwordInput.required = !optional;
+          if (optional) passwordInput.value = '';
+        }
+        if (passwordHint) passwordHint.style.display = optional ? 'block' : 'none';
+      };
+
+      if (userInput) {
+        togglePasswordState(userInput.value);
+        userInput.addEventListener('input', (ev) => togglePasswordState(ev.target.value));
+      }
+
+      let busy = false;
+      form.addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        if (busy) return;
+        busy = true;
+        statusEl.textContent = '';
+        try {
+          const formData = new FormData(form);
+          const userId = String(formData.get('userId') || '').trim();
+          const password = String(formData.get('password') || '');
+          const passwordOptional = userId.startsWith(PASSWORD_OPTIONAL_PREFIX);
+          if (!userId) {
+            statusEl.textContent = 'ユーザーIDを入力してください';
+            busy = false;
+            return;
+          }
+          if (!passwordOptional && !password) {
+            statusEl.textContent = 'パスワードを入力してください';
+            busy = false;
+            return;
+          }
+
+          const res = await fetch('/api/auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, password: passwordOptional ? '' : password })
+          });
+
+          if (!res.ok) {
+            statusEl.textContent = 'ログインに失敗しました';
+            busy = false;
+            return;
+          }
+
+          const data = await res.json().catch(() => null);
+          if (!data || !data.token || !data.userId) {
+            statusEl.textContent = 'レスポンスが不正です';
+            busy = false;
+            return;
+          }
+          setAuthState({ token: data.token, userId: data.userId, expiresAt: data.expiresAt || 0 });
+          overlay.remove();
+          await loadUsers();
+        } catch (err) {
+          console.warn('login failed', err);
+          statusEl.textContent = 'ログイン処理でエラーが発生しました';
+        } finally {
+          busy = false;
+        }
+      });
+    }
+
+    function promptForLogin() {
+      const overlay = buildLoginOverlay();
+      document.body.appendChild(overlay);
+      attachLoginHandlers(overlay);
+    }
+
+    function quotaPill(label, used) {
+      return `<span class="quota-pill"><span>${label}</span><strong>${used}</strong></span>`;
+    }
+
+    function formatTimestamp(ts) {
+      if (!ts) return '-';
+      try {
+        return new Date(ts).toLocaleString('ja-JP');
+      } catch {
+        return ts;
+      }
+    }
+
+    function renderUsers(users) {
+      if (!Array.isArray(users) || !users.length) {
+        tableBody.innerHTML = '<tr><td colspan="7" class="empty">対象ユーザーが見つかりません</td></tr>';
+        return;
+      }
+      const rows = users.map(user => {
+        const quota = user.quota || {};
+        const listening = quotaPill('聞き取り', quota.listeningUsed || 0);
+        const translation = quotaPill('和訳', quota.translationUsed || 0);
+        const pronunciation = quotaPill('発音', quota.pronunciationUsed || 0);
+        const badges = `<span class="status-badge">${user.isAdmin ? 'admin' : 'learner'}</span>${user.isAdmin ? '<span class="status-badge admin">管理者</span>' : ''}`;
+        return `
+          <tr data-user="${user.safeId}">
+            <td>${user.id}</td>
+            <td>${badges}</td>
+            <td>${listening}</td>
+            <td>${translation}</td>
+            <td>${pronunciation}</td>
+            <td>${formatTimestamp(quota.resetAt)}</td>
+            <td><button type="button" data-action="reset" data-user="${user.safeId}">クォータリセット</button></td>
+          </tr>
+        `;
+      }).join('');
+      tableBody.innerHTML = rows;
+    }
+
+    async function loadUsers() {
+      try {
+        setStatus('読み込み中…');
+        const res = await authedFetch('/api/admin/quotas');
+        if (!res.ok) {
+          if (res.status === 401 || res.status === 403) {
+            clearAuthState();
+            promptForLogin();
+            return;
+          }
+          throw new Error(`failed with status ${res.status}`);
+        }
+        const data = await res.json().catch(() => null);
+        if (data?.limit) {
+          quotaLimits.listening = Number(data.limit.listening) || quotaLimits.listening;
+          quotaLimits.translation = Number(data.limit.translation) || quotaLimits.translation;
+          quotaLimits.pronunciation = Number(data.limit.pronunciation) || quotaLimits.pronunciation;
+          updateLimitSummary();
+        }
+        renderUsers(data?.users || []);
+        setStatus('最新の情報を表示しています');
+      } catch (err) {
+        console.warn('load users failed', err);
+        setStatus('読み込みに失敗しました', { type: 'error' });
+        tableBody.innerHTML = '<tr><td colspan="7" class="empty">読み込みに失敗しました</td></tr>';
+      }
+    }
+
+    async function resetQuotaFor(userId) {
+      if (!userId) return;
+      const confirmed = window.confirm(`${userId} のクォータをリセットしますか？`);
+      if (!confirmed) return;
+      try {
+        setStatus('リセット中…');
+        const res = await authedFetch('/api/admin/quotas', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId })
+        });
+        if (!res.ok) throw new Error(`reset failed ${res.status}`);
+        await loadUsers();
+        setStatus('クォータをリセットしました');
+      } catch (err) {
+        console.warn('reset quota failed', err);
+        setStatus('クォータのリセットに失敗しました', { type: 'error' });
+      }
+    }
+
+    tableBody.addEventListener('click', (event) => {
+      const button = event.target.closest('button[data-action="reset"]');
+      if (!button) return;
+      const targetUser = button.dataset.user;
+      resetQuotaFor(targetUser);
+    });
+
+    logoutBtn.addEventListener('click', () => {
+      clearAuthState();
+      promptForLogin();
+      tableBody.innerHTML = '<tr><td colspan="7" class="empty">ログインすると利用できます</td></tr>';
+    });
+
+    refreshBtn.addEventListener('click', () => {
+      loadUsers();
+    });
+
+    (async () => {
+      updateAuthDisplay();
+      updateLimitSummary();
+      const cached = loadSessionFromStorage();
+      if (cached) {
+        setAuthState(cached);
+        const valid = await validateToken();
+        if (valid) {
+          await loadUsers();
+          return;
+        }
+        clearAuthState();
+      }
+      promptForLogin();
+    })();
+  })();
+  </script>
+</body>
+</html>
