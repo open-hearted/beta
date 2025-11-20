@@ -1,4 +1,4 @@
-const { authenticateUser, requireAuth, signToken, isPasswordOptionalUser, isAdminUser } = require('./_auth');
+const { authenticateUser, requireAuth, signToken, isPasswordOptionalUser } = require('./_auth');
 
 function parseBody(body) {
   if (!body) return {};
@@ -26,14 +26,12 @@ module.exports = async (req, res) => {
         return;
       }
       const expiresIn = Number(process.env.AUTH_TOKEN_TTL || 3600);
-      const isAdmin = isAdminUser(user.id);
-      const { token, payload } = signToken(user.id, expiresIn, { admin: isAdmin });
+      const { token, payload } = signToken(user.id, expiresIn);
       res.status(200).json({
         ok: true,
         token,
         userId: user.id,
         safeUserId: user.safeId,
-        isAdmin,
         expiresIn,
         expiresAt: payload.exp * 1000
       });
@@ -52,7 +50,6 @@ module.exports = async (req, res) => {
       ok: true,
       userId: user.id,
       safeUserId: user.safeId,
-      isAdmin: Boolean(user.isAdmin || isAdminUser(user.id)),
       expiresAt: payload.exp ? payload.exp * 1000 : undefined
     });
     return;

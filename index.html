@@ -70,17 +70,6 @@
   .auth-bar.hidden { display: none; }
   .auth-bar button { background: #ef4444; }
   .auth-bar button:hover { background: #dc2626; }
-  .admin-panel { max-width: 820px; margin: 0 auto 1.5rem auto; padding: 1rem; background: #fff; border: 1px solid #d1d5db; border-radius: 8px; box-shadow: 0 6px 12px rgba(15,23,42,0.08); }
-  .admin-panel.hidden { display: none; }
-  .admin-panel-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 0.75rem; }
-  .admin-panel-header h3 { margin: 0; font-size: 1.05rem; color: #111827; }
-  .admin-panel-actions { display: flex; align-items: center; gap: 8px; }
-  .admin-panel-status { font-size: 0.85rem; color: #4b5563; margin-bottom: 0.75rem; }
-  .admin-panel table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
-  .admin-panel th, .admin-panel td { border: 1px solid #e5e7eb; padding: 0.5rem; text-align: left; }
-  .admin-panel th { background: #f8fafc; color: #1f2937; }
-  .admin-panel td .admin-usage-meta { display: block; font-size: 0.78rem; color: #6b7280; }
-  .admin-panel-empty { font-size: 0.9rem; color: #6b7280; text-align: center; padding: 1rem 0; }
     #scoreBlock { margin: 1rem 0; text-align: center; }
     #wordsBlock { margin-top: 1rem; }
     table { width: 100%; border-collapse: collapse; text-align: left; }
@@ -102,7 +91,6 @@
   <span id="authUserDisplay"></span>
   <button id="logoutBtn" type="button">ログアウト</button>
 </div>
-<div id="adminPanel" class="admin-panel hidden" aria-hidden="true"></div>
 <div class="full-audio-block">
   <h2 class="full-audio-title">お手本ニュース音声</h2>
   <p class="full-audio-caption">まずはニュース全体を通して聞き、発音やリズムを確認しましょう。</p>
@@ -144,7 +132,7 @@ if (fullAudio) {
 }
 
 const AUTH_STORAGE_KEY = 'ela_auth_session';
-const authState = { token: null, userId: null, expiresAt: 0, isAdmin: false };
+const authState = { token: null, userId: null, expiresAt: 0 };
 let PAGE_PREFIX = '';
 let currentAuthUserId = null;
 const PASSWORD_OPTIONAL_PREFIX = 'acg2_';
@@ -153,13 +141,12 @@ function sanitizeUserIdForClient(id) {
   return String(id || '').trim().replace(/[^A-Za-z0-9._-]/g, '_');
 }
 
-function setAuthState(token, userId, expiresAt, isAdmin = false) {
+function setAuthState(token, userId, expiresAt) {
   authState.token = token;
   authState.userId = userId;
   authState.expiresAt = expiresAt;
-  authState.isAdmin = Boolean(isAdmin);
   try {
-    const payload = JSON.stringify({ token, userId, expiresAt, isAdmin: authState.isAdmin });
+    const payload = JSON.stringify({ token, userId, expiresAt });
     localStorage.setItem(AUTH_STORAGE_KEY, payload);
   } catch (e) {
     console.warn('persist auth failed', e);
@@ -171,7 +158,6 @@ function clearAuthState() {
   authState.token = null;
   authState.userId = null;
   authState.expiresAt = 0;
-  authState.isAdmin = false;
   try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch {}
   updateAuthBar();
 }
@@ -183,8 +169,6 @@ function loadAuthFromStorage() {
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return null;
     if (!parsed.token || !parsed.userId || !parsed.expiresAt) return null;
-    parsed.expiresAt = Number(parsed.expiresAt) || 0;
-    parsed.isAdmin = Boolean(parsed.isAdmin);
     return parsed;
   } catch (e) {
     console.warn('load auth storage failed', e);
@@ -679,11 +663,7 @@ function updateEvaluationQuotaDisplay(type, idx) {
     const remainingDisplay = Number.isFinite(remaining) ? remaining : '∞';
     let suffix = '';
     if (Number.isFinite(globalRemaining) && globalRemaining < sectionRemaining) {
-      const globalLimitRaw = quotaState.limits ? quotaState.limits[type] : undefined;
-      const globalLimitDisplay = Number.isFinite(globalLimitRaw)
-        ? `${Math.floor(globalLimitRaw)}回`
-        : '無制限';
-      suffix = ` (全体残り${globalRemaining}回 / 上限${globalLimitDisplay})`;
+      suffix = ` (全体${globalRemaining}回)`;
     }
     el.textContent = `残り${remainingDisplay}回${suffix}`;
     const exhausted = (Number.isFinite(remaining) && remaining <= 0) || (Number.isFinite(globalRemaining) && globalRemaining <= 0);
@@ -757,11 +737,7 @@ function updatePronunciationQuotaDisplay(idx) {
     const displayValue = Number.isFinite(remaining) ? remaining : '∞';
     let suffix = '';
     if (Number.isFinite(globalRemaining) && globalRemaining < localRemaining) {
-      const globalLimitRaw = quotaState.limits ? quotaState.limits.pronunciation : undefined;
-      const globalLimitDisplay = Number.isFinite(globalLimitRaw)
-        ? `${Math.floor(globalLimitRaw)}回`
-        : '無制限';
-      suffix = ` (全体残り${globalRemaining}回 / 上限${globalLimitDisplay})`;
+      suffix = ` (全体${globalRemaining}回)`;
     }
     recQuota.textContent = `残り${displayValue}回${suffix}`;
     const exhausted = (Number.isFinite(remaining) && remaining <= 0) || (Number.isFinite(globalRemaining) && globalRemaining <= 0);
@@ -803,8 +779,9 @@ async function validateToken() {
     if (!res.ok) return false;
     const data = await res.json().catch(() => null);
     if (!data || !data.userId) return false;
-    const nextExpiry = data.expiresAt ? Number(data.expiresAt) : authState.expiresAt;
-    setAuthState(authState.token, data.userId, nextExpiry, data.isAdmin);
+    authState.userId = data.userId;
+    if (data.expiresAt) authState.expiresAt = data.expiresAt;
+  updateAuthBar();
     return true;
   } catch (e) {
     console.warn('token validation failed', e);
@@ -900,7 +877,7 @@ async function promptForLogin() {
         const data = await res.json();
         const now = Date.now();
         const expiresInMs = (data.expiresIn || 3600) * 1000;
-        setAuthState(data.token, data.userId, now + expiresInMs, data.isAdmin);
+        setAuthState(data.token, data.userId, now + expiresInMs);
         overlay.remove();
         resolve(authState);
       } catch (e) {
@@ -922,7 +899,6 @@ async function ensureAuthenticated() {
     authState.token = stored.token;
     authState.userId = stored.userId;
     authState.expiresAt = stored.expiresAt;
-    authState.isAdmin = Boolean(stored.isAdmin);
     if (stored.expiresAt && stored.expiresAt > Date.now() + 5000) {
       const ok = await validateToken();
       if (ok) return authState;
@@ -1796,10 +1772,11 @@ async function callChatGPT({ type, idx, inputEl, referenceText, buttonEl }) {
         system: "あなたは英語リスニングを指導する講師です。学習者が聞き取った英文と公式スクリプトを丁寧に比較し、どの語が正しく、どこに抜けや誤りがあるかを具体的に指摘してください。曖昧な評価や『正しいです』だけで済ませず、改善点・次の練習アイデアも必ず盛り込みます。日本語で分かりやすく、肯定的なトーンを保ちながらフィードバックを返してください。",
         template: "学習者が聞き取って入力した英文:\n{{student}}\n\n公式の正しいスクリプト:\n{{reference}}\n\n以下の形式で日本語で回答してください。\n1. 全体評価（正確さを一言で）\n2. 良かった点（あれば箇条書き）\n3. 改善点（不足・誤り・順序違いなど具体的に）\n4. 次の練習アドバイス（1つ）"
       };
-    if (buttonEl) {
-      buttonEl.disabled = true;
-      buttonEl.textContent = '評価中…';
-    }
+
+  const originalLabel = buttonEl?.textContent;
+  if (buttonEl) {
+    buttonEl.disabled = true;
+    buttonEl.textContent = '評価中…';
   }
 
   try {

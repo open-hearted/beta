@@ -145,19 +145,18 @@ function base64urlDecode(str) {
   return JSON.parse(Buffer.from(str, 'base64url').toString('utf8'));
 }
 
-function signToken(userId, expiresInSeconds = 3600, extraClaims = {}) {
+function signToken(userId, expiresInSeconds = 3600) {
   if (!AUTH_SECRET) {
     throw new Error('AUTH_SECRET (or JWT_SECRET) env var is not set');
   }
   const header = { alg: 'HS256', typ: 'JWT' };
   const now = Math.floor(Date.now() / 1000);
-  const basePayload = {
+  const payload = {
     sub: String(userId),
     safeSub: sanitizeUserId(userId),
     iat: now,
     exp: now + Number(expiresInSeconds || 3600)
   };
-  const payload = Object.assign({}, basePayload, (extraClaims && typeof extraClaims === 'object') ? extraClaims : {});
   const headerPart = base64urlEncode(header);
   const payloadPart = base64urlEncode(payload);
   const data = `${headerPart}.${payloadPart}`;
@@ -208,11 +207,7 @@ function requireAuth(req, res) {
       return null;
     }
   const payload = verifyToken(token);
-  const user = {
-    id: payload.sub,
-    safeId: sanitizeUserId(payload.safeSub || payload.sub),
-    isAdmin: Boolean(payload.admin || payload.isAdmin)
-  };
+  const user = { id: payload.sub, safeId: sanitizeUserId(payload.safeSub || payload.sub) };
   req.user = user;
   req.authPayload = payload;
   return user;
