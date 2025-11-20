@@ -680,13 +680,60 @@ function getEvaluationHistoryCount(type, idx) {
   return loadEvaluationHistory(type, idx).length;
 }
 
+function normalizeEvaluationType(type) {
+  return type === 'translation' ? 'translation' : 'listening';
+}
+
+function evaluationAttemptsKey(type, idx) {
+  const normalized = normalizeEvaluationType(type);
+  return `${normalized}Attempts_${idx}`;
+}
+
+function getStoredEvaluationAttempts(type, idx) {
+  try {
+    const raw = storageGet(evaluationAttemptsKey(type, idx));
+    const num = Number(raw);
+    if (!Number.isFinite(num) || num < 0) return 0;
+    return Math.floor(num);
+  } catch (err) {
+    console.warn('getStoredEvaluationAttempts failed', err);
+    return 0;
+  }
+}
+
+function setStoredEvaluationAttempts(type, idx, value) {
+  try {
+    storageSet(evaluationAttemptsKey(type, idx), String(Math.max(0, Math.floor(value))));
+  } catch (err) {
+    console.warn('setStoredEvaluationAttempts failed', err);
+  }
+}
+
+function getEvaluationAttempts(type, idx) {
+  const normalized = normalizeEvaluationType(type);
+  const stored = getStoredEvaluationAttempts(normalized, idx);
+  const historyCount = getEvaluationHistoryCount(normalized, idx);
+  if (historyCount > stored) {
+    setStoredEvaluationAttempts(normalized, idx, historyCount);
+    return historyCount;
+  }
+  return stored;
+}
+
+function incrementEvaluationAttempts(type, idx) {
+  const normalized = normalizeEvaluationType(type);
+  const next = getEvaluationAttempts(normalized, idx) + 1;
+  setStoredEvaluationAttempts(normalized, idx, next);
+  return next;
+}
+
 function updateEvaluationQuotaDisplay(type, idx) {
   const el = document.getElementById(`${type}Quota_${idx}`);
   if (!el) return;
   const limit = type === 'translation' ? sectionLimits.translation : sectionLimits.listening;
   const label = type === 'translation' ? '和訳評価' : '聞き取り評価';
   try {
-    const count = getEvaluationHistoryCount(type, idx);
+    const count = getEvaluationAttempts(type, idx);
     const sectionRemaining = Number.isFinite(limit) ? Math.max(0, Math.floor(limit) - count) : Infinity;
     const globalRemaining = getGlobalQuotaRemaining(type);
     const remaining = Number.isFinite(sectionRemaining)
@@ -1797,7 +1844,7 @@ async function callChatGPT({ type, idx, inputEl, referenceText, buttonEl }) {
 
   const localLimit = isTranslation ? sectionLimits.translation : sectionLimits.listening;
   if (Number.isFinite(localLimit)) {
-    const existing = getEvaluationHistoryCount(quotaType, idx);
+    const existing = getEvaluationAttempts(quotaType, idx);
     if (existing >= Math.floor(localLimit)) {
       const label = isTranslation ? '翻訳評価' : '聞き取り評価';
       alert(`${label}は1セクションにつき${localLimit}回までです。`);
@@ -1829,7 +1876,9 @@ async function callChatGPT({ type, idx, inputEl, referenceText, buttonEl }) {
     const data = await res.json();
     const feedback = data.choices?.[0]?.message?.content || '⚠️ 応答がありません。';
 
-  appendEvaluationHistory(isTranslation ? 'translation' : 'listening', idx, userText, feedback);
+  const evalType = isTranslation ? 'translation' : 'listening';
+  incrementEvaluationAttempts(evalType, idx);
+  appendEvaluationHistory(evalType, idx, userText, feedback);
 
   const legacyKey = isTranslation ? `chatResponse_translation_${idx}` : `chatResponse_listening_${idx}`;
   storageRemove(legacyKey);
