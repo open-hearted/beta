@@ -693,9 +693,7 @@ function updateEvaluationQuotaDisplay(type, idx) {
       ? (Number.isFinite(globalRemaining) ? Math.min(sectionRemaining, globalRemaining) : sectionRemaining)
       : globalRemaining;
     const remainingDisplay = Number.isFinite(remaining) ? remaining : '∞';
-    const globalLimit = quotaState?.limits?.[type];
-    const suffix = Number.isFinite(globalLimit) ? `（全体上限${globalLimit}回）` : '';
-    el.textContent = `残り${remainingDisplay}回${suffix}`;
+    el.textContent = `残り${remainingDisplay}回`;
     const exhausted = (Number.isFinite(remaining) && remaining <= 0) || (Number.isFinite(globalRemaining) && globalRemaining <= 0);
     el.style.color = exhausted ? '#b91c1c' : '#059669';
     if (Number.isFinite(limit)) {
@@ -773,9 +771,7 @@ function updatePronunciationQuotaDisplay(idx) {
       ? (Number.isFinite(globalRemaining) ? Math.min(localRemaining, globalRemaining) : localRemaining)
       : globalRemaining;
     const displayValue = Number.isFinite(remaining) ? remaining : '∞';
-    const globalLimit = quotaState?.limits?.pronunciation;
-    const suffix = Number.isFinite(globalLimit) ? `（全体上限${globalLimit}回）` : '';
-    recQuota.textContent = `残り${displayValue}回${suffix}`;
+    recQuota.textContent = `残り${displayValue}回`;
     const exhausted = (Number.isFinite(remaining) && remaining <= 0) || (Number.isFinite(globalRemaining) && globalRemaining <= 0);
     recQuota.style.color = exhausted ? '#b91c1c' : '#059669';
     if (Number.isFinite(localLimit)) {
