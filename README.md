@@ -31,3 +31,13 @@ When the S3 bucket is unreachable the application logs a warning and falls back 
 | `/api/usage-admin` | `POST` | Admin actions: `reset`, `delete`, or `get` for a specific user (`{ action, userId }`). |
 
 Admin privileges require that the authenticated user ID appears in `AUTH_ADMINS` (strings, arrays, or JSON objects are supported).
+
+### 管理用ダッシュボード
+
+`admin.html` をブラウザーで開くと、S3 バケット内に保存された全ユーザーの使用状況を一覧できます。管理者としてログイン後、以下の操作が利用できます。
+
+- 最新状態の再取得（`/api/usage-admin` から再読み込み）。
+- ユーザーごとの使用回数リセット。
+- ユーザーレコードの削除（S3 上のファイルを削除）。
+
+環境が S3 に接続できない場合は、画面上部に「メモリ (再起動で消去されます)」と表示され、アプリケーションがメモリモードで動作していることが確認できます。
