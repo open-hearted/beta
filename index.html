@@ -22,7 +22,7 @@
   .entry-title { flex: 0 0 auto; font-size: 1.05rem; }
     .entry-snippet { flex: 2 1 240px; font-size: 0.95rem; color: #6b7280; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .entry-status { position: absolute; left: 50%; transform: translateX(-50%); font-size: 0.9rem; color: #374151; white-space: nowrap; }
-  .entry-trend { flex: 1 1 100%; font-size: 0.85rem; color: #1d4ed8; margin: 0.25rem 0 0 0; text-align: left; }
+  .entry-trend { flex: 1 1 100%; font-size: 0.85rem; color: #2563eb; margin: 0.2rem 0 0 0; text-align: left; }
     .entry-body { padding: 1.25rem; background: white; }
     h1 { font-size: 2rem; color: #333; margin-bottom: 1rem; text-align: center; }
     h2 { font-size: 1.3rem; color: #555; margin-bottom: 1rem; border-bottom: 2px solid #eee; padding-bottom: 0.5rem; }
@@ -579,12 +579,6 @@ function updateScoreTrend(type, idx, historyOverride = null) {
   return snapshot;
 }
 
-const TREND_ICONS = {
-  listening: '👂',
-  translation: '📝',
-  pronunciation: '🎤'
-};
-
 function updateEntryTrendSummary(idx, overrides = {}) {
   const target = document.getElementById(`summaryTrend_${idx}`);
   if (!target) return;
@@ -594,9 +588,10 @@ function updateEntryTrendSummary(idx, overrides = {}) {
   types.forEach(type => {
     const snapshot = overrides[type] || computeScoreTrendSnapshot(type, idx);
     if (snapshot.text) {
-      const icon = TREND_ICONS[type] || '';
-      parts.push(`${icon}${snapshot.text}`);
-      titles.push(`${icon ? icon + ' ' : ''}${snapshot.title}`);
+      const label = type === 'translation' ? '和訳' : (type === 'pronunciation' ? '録音' : '聞き取り');
+      const sequence = snapshot.text.replace(/\s*→\s*/g, ' → ');
+      parts.push(`${label}✅${sequence}`);
+      titles.push(`${label}: ${snapshot.title}`);
     }
   });
   if (!parts.length) {
