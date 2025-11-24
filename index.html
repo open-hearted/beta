@@ -56,8 +56,9 @@
   .pronunciation-timer { color: #b91c1c; font-weight: 600; }
   .evaluation-history { margin-top: 0.75rem; border-top: 1px dashed #d1d5db; padding-top: 0.75rem; display: flex; flex-direction: column; gap: 0.75rem; }
   .history-entry { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
-  .history-entry-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: #6b7280; }
-  .history-entry-header .history-delete { background: #f87171; padding: 0.3rem 0.6rem; font-size: 0.8rem; }
+  .history-entry-header { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #6b7280; }
+  .history-entry-header .history-score { font-weight: 600; color: #2563eb; }
+  .history-entry-header .history-delete { background: #f87171; padding: 0.3rem 0.6rem; font-size: 0.8rem; margin-left: auto; }
   .history-entry-header .history-delete:hover { background: #dc2626; }
   .history-row { display: flex; gap: 0.5rem; align-items: flex-start; }
   .history-label { font-weight: 600; min-width: 3rem; color: #374151; font-size: 0.9rem; }
@@ -438,11 +439,19 @@ function evaluationHistoryKey(type, idx) {
   return `${type}History_${idx}`;
 }
 
+function normalizeScoreValue(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return null;
+  const clamped = Math.max(0, Math.min(100, num));
+  return Math.round(clamped);
+}
+
 function sanitizeHistoryEntry(entry) {
   if (!entry || typeof entry !== 'object') return null;
   const input = String(entry.input ?? entry.listen ?? entry.student ?? '').trim();
   const feedback = String(entry.feedback ?? entry.result ?? entry.response ?? '').trim();
-  if (!input && !feedback) return null;
+  const score = normalizeScoreValue(entry.score ?? entry.points ?? entry.rating);
+  if (!input && !feedback && score === null) return null;
   const rawTs = entry.createdAt || entry.savedAt || entry.timestamp || entry.time;
   let iso = null;
   if (rawTs) {
@@ -450,7 +459,32 @@ function sanitizeHistoryEntry(entry) {
     if (!Number.isNaN(parsed.getTime())) iso = parsed.toISOString();
   }
   if (!iso) iso = new Date().toISOString();
-  return { input, feedback, createdAt: iso };
+  return { input, feedback, score, createdAt: iso };
+}
+
+function parseEvaluationScorePayload(rawText) {
+  const fallback = { score: null, feedback: (rawText || '').trim() };
+  if (!rawText || typeof rawText !== 'string') return fallback;
+  let candidate = rawText.trim();
+  if (!candidate) return fallback;
+  if (!candidate.startsWith('{')) {
+    const match = candidate.match(/\{[\s\S]*\}/);
+    if (match && match[0]) {
+      candidate = match[0];
+    }
+  }
+  try {
+    const parsed = JSON.parse(candidate);
+    const score = normalizeScoreValue(parsed.score);
+    const feedbackText = String(parsed.feedback ?? '').trim();
+    return {
+      score,
+      feedback: feedbackText || fallback.feedback
+    };
+  } catch (err) {
+    console.warn('parseEvaluationScorePayload failed', err);
+    return fallback;
+  }
 }
 
 function loadEvaluationHistory(type, idx) {
@@ -512,7 +546,8 @@ function evaluationHistoryEntryKey(entry) {
   const created = entry.createdAt || '';
   const input = entry.input || '';
   const feedback = entry.feedback || '';
-  return `${created}__${input}__${feedback}`;
+  const score = Number.isFinite(entry.score) ? String(entry.score) : '';
+  return `${created}__${input}__${feedback}__${score}`;
 }
 
 function formatHistoryTimestamp(raw) {
@@ -585,6 +620,12 @@ function renderEvaluationHistory(type, idx, entries) {
     const timeEl = document.createElement('time');
     timeEl.textContent = formatHistoryTimestamp(entry.createdAt) || '日時不明';
     header.appendChild(timeEl);
+    if (Number.isFinite(entry?.score)) {
+      const scoreEl = document.createElement('span');
+      scoreEl.className = 'history-score';
+      scoreEl.textContent = `スコア ${entry.score}点`;
+      header.appendChild(scoreEl);
+    }
     const deleteBtn = document.createElement('button');
     deleteBtn.type = 'button';
     deleteBtn.className = 'history-delete';
@@ -624,8 +665,8 @@ function renderEvaluationHistory(type, idx, entries) {
   updateEvaluationQuotaDisplay(type, idx);
 }
 
-function appendEvaluationHistory(type, idx, input, feedback, createdAt = null, options = {}) {
-  const baseEntry = sanitizeHistoryEntry({ input, feedback, createdAt });
+function appendEvaluationHistory(type, idx, input, feedback, score = null, createdAt = null, options = {}) {
+  const baseEntry = sanitizeHistoryEntry({ input, feedback, score, createdAt });
   if (!baseEntry) return;
   const current = loadEvaluationHistory(type, idx);
   if (!options.allowDuplicate) {
@@ -1818,10 +1859,13 @@ async function callChatGPT({ type, idx, inputEl, referenceText, buttonEl }) {
   }
 
   const prompt = isTranslation
-    ? { system: "以下は翻訳評価です。", template: "学習者の訳: {{student}}\n原文: {{reference}}\n誤訳や不足、良い点を日本語で簡潔に指摘してください。" }
+    ? {
+        system: "あなたは日英翻訳を採点する講師です。学習者の和訳を100点満点で評価し、改善点を日本語で丁寧に説明してください。評価はJSONだけで返し、score(整数0-100)とfeedback(日本語コメント)の2つのプロパティを含めてください。",
+        template: "学習者の訳: {{student}}\n原文: {{reference}}\n\n次のJSON形式のみで回答してください:\n{\"score\": <0から100の整数>, \"feedback\": \"日本語コメント\"}"
+      }
     : {
-        system: "あなたは英語リスニングを指導する講師です。学習者が聞き取った英文と公式スクリプトを丁寧に比較し、どの語が正しく、どこに抜けや誤りがあるかを具体的に指摘してください。曖昧な評価や『正しいです』だけで済ませず、改善点・次の練習アイデアも必ず盛り込みます。日本語で分かりやすく、肯定的なトーンを保ちながらフィードバックを返してください。",
-        template: "学習者が聞き取って入力した英文:\n{{student}}\n\n公式の正しいスクリプト:\n{{reference}}\n\n以下の形式で日本語で回答してください。\n1. 全体評価（正確さを一言で）\n2. 良かった点（あれば箇条書き）\n3. 改善点（不足・誤り・順序違いなど具体的に）\n4. 次の練習アドバイス（1つ）"
+        system: "あなたは英語リスニングを指導する講師です。学習者が聞き取った英文と公式スクリプトを丁寧に比較し、正確さを100点満点で採点して、日本語で肯定的かつ具体的な改善コメントを返してください。出力はJSONのみで、score(整数0-100)とfeedback(日本語コメント)を含めてください。",
+        template: "学習者が聞き取って入力した英文:\n{{student}}\n\n公式の正しいスクリプト:\n{{reference}}\n\n次のJSON形式だけで回答してください:\n{\"score\": <0から100の整数>, \"feedback\": \"日本語コメント\"}"
       };
 
   const originalLabel = buttonEl?.textContent;
@@ -1838,11 +1882,14 @@ async function callChatGPT({ type, idx, inputEl, referenceText, buttonEl }) {
     const res = await authedFetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!res.ok) throw new Error(`Error: ${res.status} ${res.statusText}`);
     const data = await res.json();
-    const feedback = data.choices?.[0]?.message?.content || '⚠️ 応答がありません。';
+    const rawContent = data.choices?.[0]?.message?.content || '';
+    const parsed = parseEvaluationScorePayload(rawContent);
+    const feedback = parsed.feedback || '⚠️ 応答がありません。';
+    const score = parsed.score;
 
-  const evalType = isTranslation ? 'translation' : 'listening';
-  incrementEvaluationAttempts(evalType, idx);
-  appendEvaluationHistory(evalType, idx, userText, feedback);
+    const evalType = isTranslation ? 'translation' : 'listening';
+    incrementEvaluationAttempts(evalType, idx);
+    appendEvaluationHistory(evalType, idx, userText, feedback, score);
 
   const legacyKey = isTranslation ? `chatResponse_translation_${idx}` : `chatResponse_listening_${idx}`;
   storageRemove(legacyKey);
