@@ -2064,7 +2064,7 @@ async function callChatGPT({ type, idx, inputEl, referenceText, buttonEl }) {
     await reserveQuotaUsage(quotaType);
     const systemPrompt = prompt.system;
     const userPrompt = prompt.template.replace("{{student}}", userText).replace("{{reference}}", referenceText);
-    const body = { model: 'gpt-4', messages: [ { role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt } ] };
+    const body = { model: 'gpt-5.1', messages: [ { role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt } ] };
     const res = await authedFetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!res.ok) throw new Error(`Error: ${res.status} ${res.statusText}`);
     const data = await res.json();
