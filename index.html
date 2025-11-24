@@ -910,7 +910,8 @@ function isPronunciationLimitReached(idx) {
 
 function updatePronunciationQuotaDisplay(idx) {
   const recQuota = document.getElementById(`recQuota_${idx}`);
-  if (!recQuota) return;
+  const headerQuota = document.getElementById(`pronunciationQuota_${idx}`);
+  if (!recQuota && !headerQuota) return;
   try {
     const attempts = getPronunciationAttempts(idx);
     const localLimit = sectionLimits.pronunciation;
@@ -922,21 +923,32 @@ function updatePronunciationQuotaDisplay(idx) {
       ? (Number.isFinite(globalRemaining) ? Math.min(localRemaining, globalRemaining) : localRemaining)
       : globalRemaining;
     const displayValue = Number.isFinite(remaining) ? remaining : '∞';
-    recQuota.textContent = `残り${displayValue}回`;
     const exhausted = (Number.isFinite(remaining) && remaining <= 0) || (Number.isFinite(globalRemaining) && globalRemaining <= 0);
-    recQuota.style.color = exhausted ? '#b91c1c' : '#059669';
+    const text = `残り${displayValue}回`;
+    const color = exhausted ? '#b91c1c' : '#059669';
+    let title = '';
     if (Number.isFinite(localLimit)) {
       if (Number.isFinite(globalRemaining)) {
-        recQuota.title = `発音評価は1セクションにつき${localLimit}回まで（全体残り${globalRemaining}回）`;
+        title = `発音評価は1セクションにつき${localLimit}回まで（全体残り${globalRemaining}回）`;
       } else {
-        recQuota.title = `発音評価は1セクションにつき${localLimit}回まで`;
+        title = `発音評価は1セクションにつき${localLimit}回まで`;
       }
     } else {
       if (Number.isFinite(globalRemaining)) {
-        recQuota.title = `発音評価のローカル上限はありません（全体残り${globalRemaining}回）`;
+        title = `発音評価のローカル上限はありません（全体残り${globalRemaining}回）`;
       } else {
-        recQuota.title = '発音評価のローカル上限はありません';
+        title = '発音評価のローカル上限はありません';
       }
+    }
+    if (recQuota) {
+      recQuota.textContent = text;
+      recQuota.style.color = color;
+      recQuota.title = title;
+    }
+    if (headerQuota) {
+      headerQuota.textContent = text;
+      headerQuota.style.color = color;
+      headerQuota.title = title;
     }
   } catch (err) {
     console.warn('updatePronunciationQuotaDisplay failed', err);
@@ -1238,7 +1250,7 @@ function buildSections() {
           <div class="evaluation-header">
             <h3 class="evaluation-title">発音評価</h3>
             <span class="score-trend" id="pronunciationTrend_${idx}"></span>
-            <span class="eval-quota eval-quota-spacer" aria-hidden="true"></span>
+            <span class="eval-quota" id="pronunciationQuota_${idx}"></span>
             <button type="button" class="evaluation-toggle pronunciation-toggle" data-idx="${idx}" aria-expanded="true">－ 詳細を隠す</button>
           </div>
           <div class="evaluation-body pronunciation-body" id="pronunciationBody_${idx}" aria-hidden="false">
