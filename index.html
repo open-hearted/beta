@@ -22,7 +22,6 @@
   .entry-title { flex: 0 0 auto; font-size: 1.05rem; }
     .entry-snippet { flex: 2 1 240px; font-size: 0.95rem; color: #6b7280; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .entry-status { position: absolute; left: 50%; transform: translateX(-50%); font-size: 0.9rem; color: #374151; white-space: nowrap; }
-  .entry-trend { flex: 1 1 100%; font-size: 0.85rem; color: #2563eb; margin: 0.2rem 0 0 0; text-align: left; }
     .entry-body { padding: 1.25rem; background: white; }
     h1 { font-size: 2rem; color: #333; margin-bottom: 1rem; text-align: center; }
     h2 { font-size: 1.3rem; color: #555; margin-bottom: 1rem; border-bottom: 2px solid #eee; padding-bottom: 0.5rem; }
@@ -544,7 +543,8 @@ function computeScoreTrendSnapshot(type, idx, historyOverride = null) {
       text: '',
       title: 'スコア記録がありません',
       latest: null,
-      best: null
+      best: null,
+      sequenceCompact: ''
     };
   }
   const chronological = recentDesc.slice().reverse();
@@ -558,12 +558,14 @@ function computeScoreTrendSnapshot(type, idx, historyOverride = null) {
     else if (delta < 0) deltaText = ` (↓${Math.abs(delta)})`;
   }
   const best = chronological.reduce((max, score) => Math.max(max, score), -Infinity);
+  const sequenceCompact = chronological.map(score => `${score}`).join(' → ');
   return {
     normalized,
     text: `${display}${deltaText}`,
     title: `最新: ${latest}点 / 最高: ${best}点`,
     latest,
-    best
+    best,
+    sequenceCompact
   };
 }
 
@@ -575,34 +577,21 @@ function updateScoreTrend(type, idx, historyOverride = null) {
     trendEl.textContent = snapshot.text;
     trendEl.title = snapshot.title;
   }
-  updateEntryTrendSummary(idx, { [snapshot.normalized]: snapshot });
   return snapshot;
 }
 
-function updateEntryTrendSummary(idx, overrides = {}) {
-  const target = document.getElementById(`summaryTrend_${idx}`);
-  if (!target) return;
+function getEntryTrendSegments(idx, overrides = {}) {
   const types = ['listening', 'translation', 'pronunciation'];
-  const parts = [];
-  const titles = [];
+  const segments = [];
   types.forEach(type => {
     const snapshot = overrides[type] || computeScoreTrendSnapshot(type, idx);
     if (snapshot.text) {
       const label = type === 'translation' ? '和訳' : (type === 'pronunciation' ? '録音' : '聞き取り');
-      const sequence = snapshot.text.replace(/\s*→\s*/g, ' → ');
-      parts.push(`${label}✅${sequence}`);
-      titles.push(`${label}: ${snapshot.title}`);
+      const sequence = (snapshot.sequenceCompact || snapshot.text).replace(/\s*→\s*/g, ' → ');
+      segments.push({ type, label, sequence, title: snapshot.title });
     }
   });
-  if (!parts.length) {
-    target.textContent = '';
-    target.title = '';
-    target.style.display = 'none';
-    return;
-  }
-  target.textContent = parts.join('　');
-  target.title = titles.join(' / ');
-  target.style.display = 'block';
+  return segments;
 }
 
 function saveEvaluationHistory(type, idx, history) {
@@ -1155,15 +1144,27 @@ function updateEntrySummary(idx) {
   const syncText = document.getElementById(`syncStatus_${idx}`)?.textContent?.trim() || "";
   const isDirty = entryEl?.dataset?.dirty === '1';
 
+  const trendSegments = getEntryTrendSegments(idx);
+  const segmentMap = trendSegments.reduce((acc, seg) => {
+    acc[seg.type] = seg;
+    return acc;
+  }, {});
+
   const listeningDone = listeningHistoryCount > 0;
   const translationDone = translationHistoryCount > 0;
   const recordingDone = recCount > 0;
   if (statusEl) {
-    const statuses = [
-      `聞き取り${listeningDone ? '✅' : '⬜'}`,
-      `和訳${translationDone ? '✅' : '⬜'}`,
-      `録音${recordingDone ? '✅' : '⬜'}`
+    const statusConfigs = [
+      { type: 'listening', label: '聞き取り', done: listeningDone },
+      { type: 'translation', label: '和訳', done: translationDone },
+      { type: 'pronunciation', label: '録音', done: recordingDone }
     ];
+    const statuses = statusConfigs.map(cfg => {
+      const mark = cfg.done ? '✅' : '⬜';
+      const seg = segmentMap[cfg.type];
+      const seqText = (cfg.done && seg && seg.sequence) ? ` ${seg.sequence}` : '';
+      return `${cfg.label}${mark}${seqText}`;
+    });
     statusEl.textContent = statuses.join('　');
     const extras = [];
     if (isDirty) extras.push('未保存の変更あり');
@@ -1171,6 +1172,9 @@ function updateEntrySummary(idx) {
     else if (/保存済/.test(syncText) || /読み込み/.test(syncText)) extras.push('サーバーと同期済み');
     else if (/失敗/.test(syncText)) extras.push('保存に失敗');
     else if (/ありません/.test(syncText)) extras.push('サーバーデータなし');
+    if (trendSegments.length) {
+      extras.push(trendSegments.map(seg => `${seg.label}: ${seg.sequence}`).join(' / '));
+    }
     statusEl.title = extras.length ? extras.join(' / ') : '';
   }
 
@@ -1193,7 +1197,6 @@ function buildSections() {
       <summary>
         <span class="entry-title">${idx + 1}/${totalSections}</span>
         <span class="entry-status" id="status${idx}">聞き取り⬜　和訳⬜　録音⬜</span>
-        <span class="entry-trend" id="summaryTrend_${idx}"></span>
         <span class="entry-snippet" id="summarySnippet_${idx}" style="display:none;"></span>
       </summary>
       <div class="entry-body">
@@ -1345,7 +1348,6 @@ function setupBlock(idx, sentence) {
   renderEvaluationHistory('translation', idx);
   updateScoreTrend('pronunciation', idx);
   updateEntrySummary(idx);
-  updateEntryTrendSummary(idx);
   setTimeout(() => {
     fetchAssessmentsForSection().catch(err => console.warn('prefetch assessments failed', err));
   }, idx * 150);
