@@ -54,6 +54,7 @@
   .evaluation-actions { display: flex; gap: 0.5rem; align-items: center; }
   .evaluation-actions button { margin: 0; }
   .evaluation-block.collapsed .evaluation-body { display: none; }
+  .score-trend { font-size: 0.85rem; color: #2563eb; margin-left: 0.4rem; white-space: nowrap; }
   .eval-quota { font-size: 0.9rem; color: #059669; font-weight: 600; }
   .pronunciation-controls { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
   .pronunciation-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
@@ -511,6 +512,39 @@ function loadEvaluationHistory(type, idx) {
   return [];
 }
 
+function updateScoreTrend(type, idx, historyOverride = null) {
+  const trendId = type === 'translation' ? `translationTrend_${idx}` : `listeningTrend_${idx}`;
+  const trendEl = document.getElementById(trendId);
+  if (!trendEl) return;
+  const history = Array.isArray(historyOverride) ? historyOverride : loadEvaluationHistory(type, idx);
+  const recentDesc = [];
+  for (const entry of history) {
+    const score = Number(entry?.score);
+    if (Number.isFinite(score)) {
+      recentDesc.push(score);
+      if (recentDesc.length >= 3) break;
+    }
+  }
+  if (!recentDesc.length) {
+    trendEl.textContent = '';
+    trendEl.title = 'スコア記録がありません';
+    return;
+  }
+  const chronological = recentDesc.slice().reverse();
+  const display = chronological.map(score => `${score}点`).join(' → ');
+  const latest = chronological[chronological.length - 1];
+  const previous = chronological.length >= 2 ? chronological[chronological.length - 2] : null;
+  let deltaText = '';
+  if (previous !== null) {
+    const delta = latest - previous;
+    if (delta > 0) deltaText = ` (↑+${delta})`;
+    else if (delta < 0) deltaText = ` (↓${Math.abs(delta)})`;
+  }
+  trendEl.textContent = `${display}${deltaText}`;
+  const best = chronological.reduce((max, score) => Math.max(max, score), -Infinity);
+  trendEl.title = `最新: ${latest}点 / 最高: ${best}点`;
+}
+
 function saveEvaluationHistory(type, idx, history) {
   const clean = Array.isArray(history)
     ? history.map(sanitizeHistoryEntry).filter(Boolean)
@@ -616,6 +650,7 @@ function renderEvaluationHistory(type, idx, entries) {
     empty.textContent = type === 'translation' ? 'まだ翻訳評価はありません。' : 'まだリスニング評価はありません。';
     container.appendChild(empty);
     updateEvaluationQuotaDisplay(type, idx);
+    updateScoreTrend(type, idx, history);
     return;
   }
   history.forEach(entry => {
@@ -670,6 +705,7 @@ function renderEvaluationHistory(type, idx, entries) {
     container.appendChild(wrapper);
   });
   updateEvaluationQuotaDisplay(type, idx);
+  updateScoreTrend(type, idx, history);
 }
 
 function appendEvaluationHistory(type, idx, input, feedback, score = null, createdAt = null, options = {}) {
@@ -1100,6 +1136,7 @@ function buildSections() {
         <div class="evaluation-block listening-block" data-idx="${idx}">
           <div class="evaluation-header">
             <h3 class="evaluation-title">リスニング評価</h3>
+            <span class="score-trend" id="listeningTrend_${idx}"></span>
             <span class="eval-quota" id="listeningQuota_${idx}"></span>
             <button type="button" class="evaluation-toggle listening-toggle" data-idx="${idx}" aria-expanded="true">－ 詳細を隠す</button>
           </div>
@@ -1114,6 +1151,7 @@ function buildSections() {
         <div class="evaluation-block translation-block">
           <div class="evaluation-header">
             <h3 class="evaluation-title">翻訳評価</h3>
+            <span class="score-trend" id="translationTrend_${idx}"></span>
             <span class="eval-quota" id="translationQuota_${idx}"></span>
             <button id="trans_${idx}_compare">翻訳評価</button>
           </div>
