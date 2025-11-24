@@ -586,7 +586,7 @@ function getEntryTrendSegments(idx, overrides = {}) {
   types.forEach(type => {
     const snapshot = overrides[type] || computeScoreTrendSnapshot(type, idx);
     if (snapshot.text) {
-      const label = type === 'translation' ? '和訳' : (type === 'pronunciation' ? '録音' : '聞き取り');
+      const label = type === 'translation' ? '和訳' : (type === 'pronunciation' ? '発音' : '聞き取り');
       const sequence = (snapshot.sequenceCompact || snapshot.text).replace(/\s*→\s*/g, ' → ');
       segments.push({ type, label, sequence, title: snapshot.title });
     }
@@ -1157,7 +1157,7 @@ function updateEntrySummary(idx) {
     const statusConfigs = [
       { type: 'listening', label: '聞き取り', done: listeningDone },
       { type: 'translation', label: '和訳', done: translationDone },
-      { type: 'pronunciation', label: '録音', done: recordingDone }
+      { type: 'pronunciation', label: '発音', done: recordingDone }
     ];
     const statuses = statusConfigs.map(cfg => {
       const mark = cfg.done ? '✅' : '⬜';
@@ -1196,7 +1196,7 @@ function buildSections() {
     <details class="entry" data-section="${idx}">
       <summary>
         <span class="entry-title">${idx + 1}/${totalSections}</span>
-        <span class="entry-status" id="status${idx}">聞き取り⬜　和訳⬜　録音⬜</span>
+        <span class="entry-status" id="status${idx}">聞き取り⬜　和訳⬜　発音⬜</span>
         <span class="entry-snippet" id="summarySnippet_${idx}" style="display:none;"></span>
       </summary>
       <div class="entry-body">
