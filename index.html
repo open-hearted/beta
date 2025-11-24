@@ -2408,8 +2408,7 @@ function drawDonutOnCanvas(canvas, score){
     // background track
     ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.strokeStyle = '#eee'; ctx.lineWidth = 8; ctx.stroke();
     if (score === null || score === undefined || Number.isNaN(Number(score))){
-      // placeholder center text
-      ctx.font = '12px sans-serif'; ctx.fillStyle = '#666'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('N/A', cx, cy);
+      // keep ring empty until score arrives
       return;
     }
     const p = Math.max(0, Math.min(1, Number(score)/100));
