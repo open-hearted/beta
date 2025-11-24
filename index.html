@@ -22,6 +22,7 @@
   .entry-title { flex: 0 0 auto; font-size: 1.05rem; }
     .entry-snippet { flex: 2 1 240px; font-size: 0.95rem; color: #6b7280; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .entry-status { position: absolute; left: 50%; transform: translateX(-50%); font-size: 0.9rem; color: #374151; white-space: nowrap; }
+  .entry-trend { flex: 1 1 100%; font-size: 0.85rem; color: #1d4ed8; margin: 0.25rem 0 0 0; text-align: left; }
     .entry-body { padding: 1.25rem; background: white; }
     h1 { font-size: 2rem; color: #333; margin-bottom: 1rem; text-align: center; }
     h2 { font-size: 1.3rem; color: #555; margin-bottom: 1rem; border-bottom: 2px solid #eee; padding-bottom: 0.5rem; }
@@ -526,11 +527,8 @@ function normalizeTrendType(type) {
   return 'listening';
 }
 
-function updateScoreTrend(type, idx, historyOverride = null) {
+function computeScoreTrendSnapshot(type, idx, historyOverride = null) {
   const normalized = normalizeTrendType(type);
-  const resolver = TREND_ID_RESOLVER[normalized];
-  const trendEl = resolver ? document.getElementById(resolver(idx)) : null;
-  if (!trendEl) return;
   const history = Array.isArray(historyOverride) ? historyOverride : loadEvaluationHistory(normalized, idx);
   const recentDesc = [];
   for (const entry of history) {
@@ -541,9 +539,13 @@ function updateScoreTrend(type, idx, historyOverride = null) {
     }
   }
   if (!recentDesc.length) {
-    trendEl.textContent = '';
-    trendEl.title = 'スコア記録がありません';
-    return;
+    return {
+      normalized,
+      text: '',
+      title: 'スコア記録がありません',
+      latest: null,
+      best: null
+    };
   }
   const chronological = recentDesc.slice().reverse();
   const display = chronological.map(score => `${score}点`).join(' → ');
@@ -555,9 +557,57 @@ function updateScoreTrend(type, idx, historyOverride = null) {
     if (delta > 0) deltaText = ` (↑+${delta})`;
     else if (delta < 0) deltaText = ` (↓${Math.abs(delta)})`;
   }
-  trendEl.textContent = `${display}${deltaText}`;
   const best = chronological.reduce((max, score) => Math.max(max, score), -Infinity);
-  trendEl.title = `最新: ${latest}点 / 最高: ${best}点`;
+  return {
+    normalized,
+    text: `${display}${deltaText}`,
+    title: `最新: ${latest}点 / 最高: ${best}点`,
+    latest,
+    best
+  };
+}
+
+function updateScoreTrend(type, idx, historyOverride = null) {
+  const snapshot = computeScoreTrendSnapshot(type, idx, historyOverride);
+  const resolver = TREND_ID_RESOLVER[snapshot.normalized];
+  const trendEl = resolver ? document.getElementById(resolver(idx)) : null;
+  if (trendEl) {
+    trendEl.textContent = snapshot.text;
+    trendEl.title = snapshot.title;
+  }
+  updateEntryTrendSummary(idx, { [snapshot.normalized]: snapshot });
+  return snapshot;
+}
+
+const TREND_ICONS = {
+  listening: '👂',
+  translation: '📝',
+  pronunciation: '🎤'
+};
+
+function updateEntryTrendSummary(idx, overrides = {}) {
+  const target = document.getElementById(`summaryTrend_${idx}`);
+  if (!target) return;
+  const types = ['listening', 'translation', 'pronunciation'];
+  const parts = [];
+  const titles = [];
+  types.forEach(type => {
+    const snapshot = overrides[type] || computeScoreTrendSnapshot(type, idx);
+    if (snapshot.text) {
+      const icon = TREND_ICONS[type] || '';
+      parts.push(`${icon}${snapshot.text}`);
+      titles.push(`${icon ? icon + ' ' : ''}${snapshot.title}`);
+    }
+  });
+  if (!parts.length) {
+    target.textContent = '';
+    target.title = '';
+    target.style.display = 'none';
+    return;
+  }
+  target.textContent = parts.join('　');
+  target.title = titles.join(' / ');
+  target.style.display = 'block';
 }
 
 function saveEvaluationHistory(type, idx, history) {
@@ -1148,6 +1198,7 @@ function buildSections() {
       <summary>
         <span class="entry-title">${idx + 1}/${totalSections}</span>
         <span class="entry-status" id="status${idx}">聞き取り⬜　和訳⬜　録音⬜</span>
+        <span class="entry-trend" id="summaryTrend_${idx}"></span>
         <span class="entry-snippet" id="summarySnippet_${idx}" style="display:none;"></span>
       </summary>
       <div class="entry-body">
@@ -1299,6 +1350,7 @@ function setupBlock(idx, sentence) {
   renderEvaluationHistory('translation', idx);
   updateScoreTrend('pronunciation', idx);
   updateEntrySummary(idx);
+  updateEntryTrendSummary(idx);
   setTimeout(() => {
     fetchAssessmentsForSection().catch(err => console.warn('prefetch assessments failed', err));
   }, idx * 150);
