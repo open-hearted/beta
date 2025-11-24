@@ -1148,15 +1148,20 @@ function buildSections() {
             <div class="evaluation-history" id="listeningHistory_${idx}"></div>
           </div>
         </div>
-        <div class="evaluation-block translation-block">
+        <div class="evaluation-block translation-block" data-idx="${idx}">
           <div class="evaluation-header">
             <h3 class="evaluation-title">翻訳評価</h3>
             <span class="score-trend" id="translationTrend_${idx}"></span>
             <span class="eval-quota" id="translationQuota_${idx}"></span>
-            <button id="trans_${idx}_compare">翻訳評価</button>
+            <button type="button" class="evaluation-toggle translation-toggle" data-idx="${idx}" aria-expanded="true">－ 詳細を隠す</button>
           </div>
-          <textarea id="trans_${idx}_input" placeholder="日本語訳を入力…"></textarea>
-          <div class="evaluation-history" id="translationHistory_${idx}"></div>
+          <div class="evaluation-body translation-body" id="translationBody_${idx}" aria-hidden="false">
+            <textarea id="trans_${idx}_input" placeholder="日本語訳を入力…"></textarea>
+            <div class="evaluation-actions">
+              <button id="trans_${idx}_compare">翻訳評価</button>
+            </div>
+            <div class="evaluation-history" id="translationHistory_${idx}"></div>
+          </div>
         </div>
         <div class="evaluation-block pronunciation-block">
           <div class="evaluation-header">
@@ -1197,6 +1202,9 @@ function setupBlock(idx, sentence) {
   const listeningBlock = cardRoot?.querySelector('.listening-block');
   const listeningToggle = cardRoot?.querySelector(`.listening-toggle[data-idx="${idx}"]`);
   const listeningBody = document.getElementById(`listeningBody_${idx}`);
+  const translationBlock = cardRoot?.querySelector('.translation-block');
+  const translationToggle = cardRoot?.querySelector(`.translation-toggle[data-idx="${idx}"]`);
+  const translationBody = document.getElementById(`translationBody_${idx}`);
 
   const noteInput = document.getElementById(`note_${idx}_input`);
   const transInput = document.getElementById(`trans_${idx}_input`);
@@ -1213,6 +1221,15 @@ function setupBlock(idx, sentence) {
       listeningToggle.textContent = collapsed ? '＋ 詳細を表示' : '－ 詳細を隠す';
       listeningToggle.setAttribute('aria-expanded', String(!collapsed));
       listeningBody.setAttribute('aria-hidden', String(collapsed));
+    });
+  }
+
+  if (translationBlock && translationToggle && translationBody) {
+    translationToggle.addEventListener('click', () => {
+      const collapsed = translationBlock.classList.toggle('collapsed');
+      translationToggle.textContent = collapsed ? '＋ 詳細を表示' : '－ 詳細を隠す';
+      translationToggle.setAttribute('aria-expanded', String(!collapsed));
+      translationBody.setAttribute('aria-hidden', String(collapsed));
     });
   }
 
