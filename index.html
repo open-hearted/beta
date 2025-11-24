@@ -1185,27 +1185,30 @@ function buildSections() {
             <div class="evaluation-history" id="translationHistory_${idx}"></div>
           </div>
         </div>
-        <div class="evaluation-block pronunciation-block">
+        <div class="evaluation-block pronunciation-block" data-idx="${idx}">
           <div class="evaluation-header">
             <h3 class="evaluation-title">発音評価</h3>
             <span class="score-trend" id="pronunciationTrend_${idx}"></span>
+            <button type="button" class="evaluation-toggle pronunciation-toggle" data-idx="${idx}" aria-expanded="true">－ 詳細を隠す</button>
           </div>
-          <audio controls src="${base}/${idx + 1}.mp3" class="sample-audio" style="margin-top:0.5rem;margin-bottom:0.5rem;"></audio>
-          <button class="collapsible script-toggle secondary-script">📜 スクリプトを表示</button>
-          <div class="content script-content secondary-script-content" style="display:none;"></div>
-          <div class="pronunciation-controls">
-            <button id="recToggle_${idx}" class="rec-toggle">🎙️ 録音開始</button>
-            <span id="recStatus_${idx}" class="pronunciation-status"></span>
-            <span id="recTimer_${idx}" class="pronunciation-timer"></span>
-            <div class="pronunciation-actions">
-              <span id="recQuota_${idx}" class="eval-quota"></span>
-              <button id="submitBtn_${idx}" class="pronunciation-submit" disabled>発音評価を実行</button>
+          <div class="evaluation-body pronunciation-body" id="pronunciationBody_${idx}" aria-hidden="false">
+            <audio controls src="${base}/${idx + 1}.mp3" class="sample-audio" style="margin-top:0.5rem;margin-bottom:0.5rem;"></audio>
+            <button class="collapsible script-toggle secondary-script">📜 スクリプトを表示</button>
+            <div class="content script-content secondary-script-content" style="display:none;"></div>
+            <div class="pronunciation-controls">
+              <button id="recToggle_${idx}" class="rec-toggle">🎙️ 録音開始</button>
+              <span id="recStatus_${idx}" class="pronunciation-status"></span>
+              <span id="recTimer_${idx}" class="pronunciation-timer"></span>
+              <div class="pronunciation-actions">
+                <span id="recQuota_${idx}" class="eval-quota"></span>
+                <button id="submitBtn_${idx}" class="pronunciation-submit" disabled>発音評価を実行</button>
+              </div>
             </div>
+            <pre id="result_${idx}" style="margin:0;padding:0;"></pre>
+            <div id="pendingPreview_${idx}" class="pending-preview"></div>
+            <div id="recList_${idx}" style="margin-top:10px;"></div>
+            <div id="scoreBlock_${idx}"></div>
           </div>
-          <pre id="result_${idx}" style="margin:0;padding:0;"></pre>
-          <div id="pendingPreview_${idx}" class="pending-preview"></div>
-          <div id="recList_${idx}" style="margin-top:10px;"></div>
-          <div id="scoreBlock_${idx}"></div>
         </div>
       </div>
     </details>
@@ -1228,6 +1231,9 @@ function setupBlock(idx, sentence) {
   const translationBlock = cardRoot?.querySelector('.translation-block');
   const translationToggle = cardRoot?.querySelector(`.translation-toggle[data-idx="${idx}"]`);
   const translationBody = document.getElementById(`translationBody_${idx}`);
+  const pronunciationBlock = cardRoot?.querySelector('.pronunciation-block');
+  const pronunciationToggle = cardRoot?.querySelector(`.pronunciation-toggle[data-idx="${idx}"]`);
+  const pronunciationBody = document.getElementById(`pronunciationBody_${idx}`);
 
   const noteInput = document.getElementById(`note_${idx}_input`);
   const transInput = document.getElementById(`trans_${idx}_input`);
@@ -1253,6 +1259,15 @@ function setupBlock(idx, sentence) {
       translationToggle.textContent = collapsed ? '＋ 詳細を表示' : '－ 詳細を隠す';
       translationToggle.setAttribute('aria-expanded', String(!collapsed));
       translationBody.setAttribute('aria-hidden', String(collapsed));
+    });
+  }
+
+  if (pronunciationBlock && pronunciationToggle && pronunciationBody) {
+    pronunciationToggle.addEventListener('click', () => {
+      const collapsed = pronunciationBlock.classList.toggle('collapsed');
+      pronunciationToggle.textContent = collapsed ? '＋ 詳細を表示' : '－ 詳細を隠す';
+      pronunciationToggle.setAttribute('aria-expanded', String(!collapsed));
+      pronunciationBody.setAttribute('aria-hidden', String(collapsed));
     });
   }
 
