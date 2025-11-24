@@ -85,6 +85,7 @@
   .rec-card .right { flex:1 1 auto; min-width:0; }
   .rec-card canvas { background:transparent; }
   .word-table { margin-top:8px; font-size:0.92rem; border-top:1px dashed #eee; padding-top:8px; }
+  .word-table-hint { font-size:0.85rem; color: #4b5563; margin-bottom: 0.5rem; }
     @media (max-width: 768px) { body { padding: 0.5rem; } .card { padding: 1rem; } h1 { font-size: 1.5rem; } button { padding: 0.6rem 1rem; font-size: 0.9rem; } }
   </style>
 </head>
@@ -514,11 +515,23 @@ function loadEvaluationHistory(type, idx) {
   return [];
 }
 
+const TREND_ID_RESOLVER = {
+  listening: idx => `listeningTrend_${idx}`,
+  translation: idx => `translationTrend_${idx}`,
+  pronunciation: idx => `pronunciationTrend_${idx}`
+};
+
+function normalizeTrendType(type) {
+  if (type === 'translation' || type === 'pronunciation') return type;
+  return 'listening';
+}
+
 function updateScoreTrend(type, idx, historyOverride = null) {
-  const trendId = type === 'translation' ? `translationTrend_${idx}` : `listeningTrend_${idx}`;
-  const trendEl = document.getElementById(trendId);
+  const normalized = normalizeTrendType(type);
+  const resolver = TREND_ID_RESOLVER[normalized];
+  const trendEl = resolver ? document.getElementById(resolver(idx)) : null;
   if (!trendEl) return;
-  const history = Array.isArray(historyOverride) ? historyOverride : loadEvaluationHistory(type, idx);
+  const history = Array.isArray(historyOverride) ? historyOverride : loadEvaluationHistory(normalized, idx);
   const recentDesc = [];
   for (const entry of history) {
     const score = Number(entry?.score);
@@ -642,16 +655,21 @@ function decodeHistoryEntryKey(encodedKey) {
 }
 
 function renderEvaluationHistory(type, idx, entries) {
-  const container = document.getElementById(`${type}History_${idx}`);
-  if (!container) return;
   const history = Array.isArray(entries) ? entries : loadEvaluationHistory(type, idx);
+  const container = document.getElementById(`${type}History_${idx}`);
+  if (!container) {
+    updateScoreTrend(type, idx, history);
+    return;
+  }
   container.innerHTML = '';
   if (!history.length) {
     const empty = document.createElement('div');
     empty.className = 'history-empty';
     empty.textContent = type === 'translation' ? 'まだ翻訳評価はありません。' : 'まだリスニング評価はありません。';
     container.appendChild(empty);
-    updateEvaluationQuotaDisplay(type, idx);
+    if (type === 'listening' || type === 'translation') {
+      updateEvaluationQuotaDisplay(type, idx);
+    }
     updateScoreTrend(type, idx, history);
     return;
   }
@@ -706,7 +724,9 @@ function renderEvaluationHistory(type, idx, entries) {
 
     container.appendChild(wrapper);
   });
-  updateEvaluationQuotaDisplay(type, idx);
+  if (type === 'listening' || type === 'translation') {
+    updateEvaluationQuotaDisplay(type, idx);
+  }
   updateScoreTrend(type, idx, history);
 }
 
@@ -1168,6 +1188,7 @@ function buildSections() {
         <div class="evaluation-block pronunciation-block">
           <div class="evaluation-header">
             <h3 class="evaluation-title">発音評価</h3>
+            <span class="score-trend" id="pronunciationTrend_${idx}"></span>
           </div>
           <audio controls src="${base}/${idx + 1}.mp3" class="sample-audio" style="margin-top:0.5rem;margin-bottom:0.5rem;"></audio>
           <button class="collapsible script-toggle secondary-script">📜 スクリプトを表示</button>
@@ -1260,6 +1281,7 @@ function setupBlock(idx, sentence) {
   transInput.value = storageGet(`trans_${idx}`) || "";
   renderEvaluationHistory('listening', idx);
   renderEvaluationHistory('translation', idx);
+  updateScoreTrend('pronunciation', idx);
   updateEntrySummary(idx);
   setTimeout(() => {
     fetchAssessmentsForSection().catch(err => console.warn('prefetch assessments failed', err));
@@ -2131,9 +2153,10 @@ function addRecordingCard(sectionIdx, meta){
   left.style = 'display:flex;align-items:center;gap:10px;';
   const canvas = document.createElement('canvas'); canvas.width = 80; canvas.height = 80; canvas.style.width = '72px'; canvas.style.height = '72px';
   const toggleWordsBtn = document.createElement('button');
-  toggleWordsBtn.textContent = '単語';
+  toggleWordsBtn.textContent = '単語評価を見る';
   toggleWordsBtn.className = 'toggle-words-btn';
   toggleWordsBtn.disabled = true;
+  toggleWordsBtn.title = 'クリックすると単語ごとの評価表が開きます';
   toggleWordsBtn.style = 'min-width:72px;';
   left.appendChild(canvas);
   left.appendChild(toggleWordsBtn);
@@ -2168,7 +2191,7 @@ function addRecordingCard(sectionIdx, meta){
 
     // word-level table (hidden initially)
     const wordsContainer = document.createElement('div'); wordsContainer.className = 'word-table'; wordsContainer.style.display = 'none';
-    wordsContainer.innerHTML = `<table style="width:100%;border-collapse:collapse;"><thead><tr><th>単語</th><th>スコア</th><th>判定</th></tr></thead><tbody></tbody></table>`;
+    wordsContainer.innerHTML = `<div class="word-table-hint">クリックした単語ボタンで詳細な単語評価が展開されます。</div><table style="width:100%;border-collapse:collapse;"><thead><tr><th>単語</th><th>スコア</th><th>判定</th></tr></thead><tbody></tbody></table>`;
     right.appendChild(wordsContainer);
 
     // wire up buttons
@@ -2182,8 +2205,8 @@ function addRecordingCard(sectionIdx, meta){
       try{
         const wc = wrapper.querySelector('.word-table');
         if (!wc) return;
-        if (wc.style.display === 'none' || wc.style.display === ''){ wc.style.display = 'block'; toggleWordsBtn.textContent = '隠す'; }
-        else { wc.style.display = 'none'; toggleWordsBtn.textContent = '単語'; }
+        if (wc.style.display === 'none' || wc.style.display === ''){ wc.style.display = 'block'; toggleWordsBtn.textContent = '単語評価を隠す'; }
+        else { wc.style.display = 'none'; toggleWordsBtn.textContent = '単語評価を見る'; }
       }catch(e){ console.warn('toggleWordsBtn', e); }
     };
 
@@ -2221,7 +2244,14 @@ function markCardAssessed(sectionIdx, s3Key, assessJson, savedAt){
   const nb = (assessJson && (assessJson.result || assessJson))?.result || assessJson?.result || assessJson;
     // find first score value tolerant
     let score = null;
-    try{ const s = (assessJson?.result?.NBest?.[0]) || (assessJson?.NBest?.[0]) || assessJson; score = s?.PronunciationAssessment?.PronScore ?? s?.PronScore ?? s?.PronunciationScore ?? s?.Score ?? null; }catch(e){}
+    try {
+      const s = (assessJson?.result?.NBest?.[0]) || (assessJson?.NBest?.[0]) || assessJson;
+      const rawScore = s?.PronunciationAssessment?.PronScore ?? s?.PronScore ?? s?.PronunciationScore ?? s?.Score ?? null;
+      if (rawScore !== null && rawScore !== undefined) {
+        const numeric = Number(rawScore);
+        score = Number.isFinite(numeric) ? numeric : null;
+      }
+    } catch(e){}
     const summaryEl = card.querySelector('.rec-summary') || card.querySelector('.right > .rec-summary') || card.lastElementChild;
     if (summaryEl) summaryEl.innerHTML = '';
     card.__assessment = assessJson;
@@ -2231,13 +2261,16 @@ function markCardAssessed(sectionIdx, s3Key, assessJson, savedAt){
       if (canvas){ drawDonutOnCanvas(canvas, Number(score)); }
     }catch(e){}
     // populate word table if available; enable the toggle button when words exist
+    let bestUtterance = null;
     try{
       const root = pickNBestRoot(assessJson) || pickNBestRoot(assessJson?.result) || pickNBestRoot(assessJson?.result?.result) || null;
       let words = [];
       if (root && Array.isArray(root.NBest) && root.NBest[0]){
-        words = root.NBest[0].Words || root.NBest[0].PronunciationAssessment?.Words || [];
+        bestUtterance = root.NBest[0];
+        words = bestUtterance.Words || bestUtterance.PronunciationAssessment?.Words || [];
       } else if (assessJson && Array.isArray(assessJson.NBest) && assessJson.NBest[0]){
-        words = assessJson.NBest[0].Words || assessJson.NBest[0].PronunciationAssessment?.Words || [];
+        bestUtterance = assessJson.NBest[0];
+        words = bestUtterance.Words || bestUtterance.PronunciationAssessment?.Words || [];
       } else if (assessJson && assessJson.Words && Array.isArray(assessJson.Words)){
         words = assessJson.Words;
       }
@@ -2258,10 +2291,43 @@ function markCardAssessed(sectionIdx, s3Key, assessJson, savedAt){
         if (wc){
           // keep hidden by default, but enable toggle button
           wc.style.display = 'none';
-          const tb = card.querySelector('.toggle-words-btn'); if (tb) { tb.disabled = false; tb.textContent = '単語'; }
+          const tb = card.querySelector('.toggle-words-btn'); if (tb) { tb.disabled = false; tb.textContent = '単語評価を見る'; }
         }
       }
     }catch(e){ console.warn('markCardAssessed word table', e); }
+
+    try {
+      const transcript = (() => {
+        if (!bestUtterance) return '';
+        return String(bestUtterance.Display || bestUtterance.Lexical || bestUtterance.ITN || bestUtterance.Word || '').trim();
+      })();
+      const paNode = bestUtterance?.PronunciationAssessment || assessJson?.PronunciationAssessment || {};
+      const accuracyScore = Number(paNode?.AccuracyScore ?? paNode?.AccScore ?? paNode?.Accuracy ?? paNode?.AccuracyScorePercent);
+      const fluencyScore = Number(paNode?.FluencyScore ?? paNode?.FluScore ?? paNode?.Fluency);
+      const completenessScore = Number(paNode?.CompletenessScore ?? paNode?.CompScore ?? paNode?.Completeness);
+      const hasMetrics = [accuracyScore, fluencyScore, completenessScore].some(val => Number.isFinite(val));
+      const metrics = [];
+      if (Number.isFinite(accuracyScore)) metrics.push(`精度 ${Math.round(accuracyScore)}点`);
+      if (Number.isFinite(fluencyScore)) metrics.push(`流暢さ ${Math.round(fluencyScore)}点`);
+      if (Number.isFinite(completenessScore)) metrics.push(`完成度 ${Math.round(completenessScore)}点`);
+      const entryTimestamp = (() => {
+        if (!savedAt) return new Date().toISOString();
+        const parsed = new Date(savedAt);
+        return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
+      })();
+      if (Number.isFinite(score) || hasMetrics) {
+        appendEvaluationHistory(
+          'pronunciation',
+          sectionIdx,
+          transcript || `録音 ${new Date(entryTimestamp).toLocaleString('ja-JP')}`,
+          metrics.length ? metrics.join(' / ') : '単語ごとの判定は録音カードをご確認ください。',
+          Number.isFinite(score) ? normalizeScoreValue(score) : null,
+          entryTimestamp
+        );
+      }
+    } catch (historyErr) {
+      console.warn('append pronunciation history failed', historyErr);
+    }
     if (savedAt) setCardTimestamp(card, savedAt);
     reorderRecordingList(listEl);
     updateEntrySummary(sectionIdx);
