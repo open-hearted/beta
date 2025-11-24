@@ -12,7 +12,7 @@
   body { font-family: sans-serif; padding: 1rem; background: #f0f2f5; max-width: none; width: 100%; margin: 0; line-height: 1.6; }
     .card { background: transparent; border: none; padding: 0; margin-bottom: 2rem; box-shadow: none; }
     .entry { border: 1px solid #ddd; border-radius: 12px; background: #fff; overflow: hidden; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05); }
-  .entry summary { position: relative; list-style: none; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 1rem 1.25rem; background: #f7f8fc; cursor: pointer; font-weight: 600; color: #1f2937; }
+  .entry summary { position: relative; list-style: none; display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; padding: 1rem 1.25rem; background: #f7f8fc; cursor: pointer; font-weight: 600; color: #1f2937; }
   .entry summary::before { content: '\25B6'; color: #6366f1; font-size: 0.85rem; transition: transform 0.2s ease; }
   .entry.expanded summary::before,
   .entry[open] summary::before { transform: rotate(90deg); }
@@ -21,7 +21,11 @@
     .entry[open] summary { border-bottom: 1px solid #e5e7eb; background: #eef2ff; }
   .entry-title { flex: 0 0 auto; font-size: 1.05rem; }
     .entry-snippet { flex: 2 1 240px; font-size: 0.95rem; color: #6b7280; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .entry-status { position: absolute; left: 50%; transform: translateX(-50%); font-size: 0.9rem; color: #374151; white-space: nowrap; }
+  .entry-status { flex: 1 1 auto; display: flex; flex-wrap: wrap; gap: 0.35rem; justify-content: center; font-size: 0.9rem; color: #374151; }
+  .status-pill { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.2rem 0.6rem; border-radius: 999px; background: #eef2ff; color: #1f2937; font-weight: 500; border: 1px solid #e0e7ff; }
+  .status-pill.pending { background: #f3f4f6; border-color: #e5e7eb; color: #6b7280; }
+  .status-pill.done { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+  .status-pill .status-sequence { font-weight: 600; color: #1d4ed8; white-space: nowrap; }
     .entry-body { padding: 1.25rem; background: white; }
     h1 { font-size: 2rem; color: #333; margin-bottom: 1rem; text-align: center; }
     h2 { font-size: 1.3rem; color: #555; margin-bottom: 1rem; border-bottom: 2px solid #eee; padding-bottom: 0.5rem; }
@@ -1171,13 +1175,15 @@ function updateEntrySummary(idx) {
       { type: 'translation', label: '和訳', done: translationDone },
       { type: 'pronunciation', label: '発音', done: recordingDone }
     ];
-    const statuses = statusConfigs.map(cfg => {
+    const statusHtml = statusConfigs.map(cfg => {
       const mark = cfg.done ? '✅' : '⬜';
       const seg = segmentMap[cfg.type];
-      const seqText = (cfg.done && seg && seg.sequence) ? ` ${seg.sequence}` : '';
-      return `${cfg.label}${mark}${seqText}`;
-    });
-    statusEl.textContent = statuses.join('　');
+      const seqText = (cfg.done && seg && seg.sequence) ? seg.sequence : '';
+      const seqHtml = seqText ? `<span class="status-sequence">${seqText}</span>` : '';
+      const stateClass = cfg.done ? 'done' : 'pending';
+      return `<span class="status-pill ${stateClass}">${cfg.label}${mark}${seqHtml}</span>`;
+    }).join('');
+    statusEl.innerHTML = statusHtml;
     const extras = [];
     if (isDirty) extras.push('未保存の変更あり');
     if (/保存中/.test(syncText)) extras.push('保存中');
