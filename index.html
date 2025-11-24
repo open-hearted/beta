@@ -47,6 +47,13 @@
   .evaluation-title { margin: 0; font-size: 1.1rem; color: #374151; }
   .evaluation-header button { margin: 0; }
   .evaluation-header .eval-quota { margin-left: auto; }
+  .evaluation-header .evaluation-toggle { background: #e5e7eb; color: #374151; padding: 0.35rem 0.7rem; border-radius: 6px; font-size: 0.85rem; }
+  .evaluation-header .evaluation-toggle:hover { background: #d1d5db; }
+  .evaluation-block.collapsed { padding-bottom: 0.75rem; }
+  .evaluation-body { display: flex; flex-direction: column; gap: 0.75rem; margin-top: 0.75rem; }
+  .evaluation-actions { display: flex; gap: 0.5rem; align-items: center; }
+  .evaluation-actions button { margin: 0; }
+  .evaluation-block.collapsed .evaluation-body { display: none; }
   .eval-quota { font-size: 0.9rem; color: #059669; font-weight: 600; }
   .pronunciation-controls { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
   .pronunciation-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
@@ -1090,14 +1097,19 @@ function buildSections() {
         <div id="syncStatus_${idx}" style="font-size:0.9rem;color:#4b5563;margin-bottom:10px"></div>
     <button class="collapsible script-toggle primary-script">📜 スクリプトを表示</button>
     <div class="content script-content primary-script-content" style="display:none;"></div>
-        <div class="evaluation-block listening-block">
+        <div class="evaluation-block listening-block" data-idx="${idx}">
           <div class="evaluation-header">
             <h3 class="evaluation-title">リスニング評価</h3>
             <span class="eval-quota" id="listeningQuota_${idx}"></span>
-            <button id="note_${idx}_compare">リスニング評価</button>
+            <button type="button" class="evaluation-toggle listening-toggle" data-idx="${idx}" aria-expanded="true">－ 詳細を隠す</button>
           </div>
-          <textarea id="note_${idx}_input" placeholder="聞こえた文を入力…"></textarea>
-          <div class="evaluation-history" id="listeningHistory_${idx}"></div>
+          <div class="evaluation-body listening-body" id="listeningBody_${idx}" aria-hidden="false">
+            <textarea id="note_${idx}_input" placeholder="聞こえた文を入力…"></textarea>
+            <div class="evaluation-actions">
+              <button id="note_${idx}_compare">リスニング評価</button>
+            </div>
+            <div class="evaluation-history" id="listeningHistory_${idx}"></div>
+          </div>
         </div>
         <div class="evaluation-block translation-block">
           <div class="evaluation-header">
@@ -1144,6 +1156,9 @@ function setupBlock(idx, sentence) {
   const primaryScriptContent = cardRoot?.querySelector(".primary-script-content");
   const secondaryScriptBtn = cardRoot?.querySelector(".secondary-script");
   const secondaryScriptContent = cardRoot?.querySelector(".secondary-script-content");
+  const listeningBlock = cardRoot?.querySelector('.listening-block');
+  const listeningToggle = cardRoot?.querySelector(`.listening-toggle[data-idx="${idx}"]`);
+  const listeningBody = document.getElementById(`listeningBody_${idx}`);
 
   const noteInput = document.getElementById(`note_${idx}_input`);
   const transInput = document.getElementById(`trans_${idx}_input`);
@@ -1153,6 +1168,15 @@ function setupBlock(idx, sentence) {
   const recToggleBtn = document.getElementById(`recToggle_${idx}`);
 
   if (entryEl) entryEl.dataset.dirty = '0';
+
+  if (listeningBlock && listeningToggle && listeningBody) {
+    listeningToggle.addEventListener('click', () => {
+      const collapsed = listeningBlock.classList.toggle('collapsed');
+      listeningToggle.textContent = collapsed ? '＋ 詳細を表示' : '－ 詳細を隠す';
+      listeningToggle.setAttribute('aria-expanded', String(!collapsed));
+      listeningBody.setAttribute('aria-hidden', String(collapsed));
+    });
+  }
 
   if (entryEl) {
     entryEl.addEventListener("toggle", () => {
