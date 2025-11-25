@@ -3,19 +3,16 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title></title>
+  <title>英語の筋トレ</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
     /* make sizing predictable and avoid horizontal overflow */
     *, *::before, *::after { box-sizing: border-box; }
     html, body { overflow-x: hidden; }
   body { font-family: sans-serif; padding: 1rem; background: #f0f2f5; max-width: none; width: 100%; margin: 0; line-height: 1.6; }
-  .full-audio-block { max-width: 820px; margin: 0 auto 2.5rem auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 1.25rem 1.5rem; box-shadow: 0 6px 12px rgba(15,23,42,0.06); }
-  .full-audio-title { margin: 0 0 0.4rem 0; font-size: 1.35rem; color: #1f2937; text-align: center; }
-  .full-audio-caption { margin: 0 0 1rem 0; font-size: 0.95rem; color: #4b5563; text-align: center; }
     .card { background: transparent; border: none; padding: 0; margin-bottom: 2rem; box-shadow: none; }
     .entry { border: 1px solid #ddd; border-radius: 12px; background: #fff; overflow: hidden; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05); }
-  .entry summary { position: relative; list-style: none; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 1rem 1.25rem; background: #f7f8fc; cursor: pointer; font-weight: 600; color: #1f2937; }
+  .entry summary { position: relative; list-style: none; display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; padding: 1rem 1.25rem; background: #f7f8fc; cursor: pointer; font-weight: 600; color: #1f2937; }
   .entry summary::before { content: '\25B6'; color: #6366f1; font-size: 0.85rem; transition: transform 0.2s ease; }
   .entry.expanded summary::before,
   .entry[open] summary::before { transform: rotate(90deg); }
@@ -24,7 +21,11 @@
     .entry[open] summary { border-bottom: 1px solid #e5e7eb; background: #eef2ff; }
   .entry-title { flex: 0 0 auto; font-size: 1.05rem; }
     .entry-snippet { flex: 2 1 240px; font-size: 0.95rem; color: #6b7280; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .entry-status { position: absolute; left: 50%; transform: translateX(-50%); font-size: 0.9rem; color: #374151; white-space: nowrap; }
+  .entry-status { flex: 1 1 auto; display: flex; flex-wrap: wrap; gap: 0.35rem; justify-content: center; font-size: 0.9rem; color: #374151; }
+  .status-pill { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.2rem 0.6rem; border-radius: 999px; background: #eef2ff; color: #1f2937; font-weight: 500; border: 1px solid #e0e7ff; }
+  .status-pill.pending { background: #f3f4f6; border-color: #e5e7eb; color: #6b7280; }
+  .status-pill.done { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+  .status-pill .status-sequence { font-weight: 600; color: #1d4ed8; white-space: nowrap; }
     .entry-body { padding: 1.25rem; background: white; }
     h1 { font-size: 2rem; color: #333; margin-bottom: 1rem; text-align: center; }
     h2 { font-size: 1.3rem; color: #555; margin-bottom: 1rem; border-bottom: 2px solid #eee; padding-bottom: 0.5rem; }
@@ -38,6 +39,8 @@
     .status { margin-top: 0.5rem; font-size: 1rem; color: #333; }
     .collapsible { background-color: #eee; cursor: pointer; padding: 0.5rem 1rem; border: none; font-size: 0.95rem; margin-top: 0.8rem; width: 100%; border-radius: 6px; text-align: left; }
     .collapsible:hover { background-color: #ddd; }
+    .script-toggle { display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 600; color: #111827; background-color: #e0e7ff; border: 1px solid #c7d2fe; }
+    .script-toggle:hover { background-color: #c7d2fe; }
   .content { display: none; background-color: #fafafa; padding: 1rem; border: 1px solid #ccc; margin-top: 0.5rem; border-radius: 6px; white-space: pre-wrap; }
   .pending-preview { display: none; margin-top: 0.75rem; padding: 0.75rem; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; }
   .pending-preview audio { flex: 1 1 auto; width: auto; min-width: 180px; }
@@ -50,6 +53,14 @@
   .evaluation-title { margin: 0; font-size: 1.1rem; color: #374151; }
   .evaluation-header button { margin: 0; }
   .evaluation-header .eval-quota { margin-left: auto; }
+  .evaluation-header .evaluation-toggle { background: #e5e7eb; color: #374151; padding: 0.35rem 0.7rem; border-radius: 6px; font-size: 0.85rem; }
+  .evaluation-header .evaluation-toggle:hover { background: #d1d5db; }
+  .evaluation-block.collapsed { padding-bottom: 0.75rem; }
+  .evaluation-body { display: flex; flex-direction: column; gap: 0.75rem; margin-top: 0.75rem; }
+  .evaluation-actions { display: flex; gap: 0.5rem; align-items: center; }
+  .evaluation-actions button { margin: 0; }
+  .evaluation-block.collapsed .evaluation-body { display: none; }
+  .score-trend { font-size: 0.85rem; color: #2563eb; margin-left: 0.4rem; white-space: nowrap; }
   .eval-quota { font-size: 0.9rem; color: #059669; font-weight: 600; }
   .pronunciation-controls { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
   .pronunciation-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
@@ -59,17 +70,14 @@
   .pronunciation-timer { color: #b91c1c; font-weight: 600; }
   .evaluation-history { margin-top: 0.75rem; border-top: 1px dashed #d1d5db; padding-top: 0.75rem; display: flex; flex-direction: column; gap: 0.75rem; }
   .history-entry { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
-  .history-entry-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: #6b7280; }
-  .history-entry-header .history-delete { background: #f87171; padding: 0.3rem 0.6rem; font-size: 0.8rem; }
+  .history-entry-header { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #6b7280; }
+  .history-entry-header .history-score { font-weight: 600; color: #2563eb; }
+  .history-entry-header .history-delete { background: #f87171; padding: 0.3rem 0.6rem; font-size: 0.8rem; margin-left: auto; }
   .history-entry-header .history-delete:hover { background: #dc2626; }
   .history-row { display: flex; gap: 0.5rem; align-items: flex-start; }
   .history-label { font-weight: 600; min-width: 3rem; color: #374151; font-size: 0.9rem; }
   .history-text { flex: 1 1 auto; white-space: pre-wrap; word-break: break-word; font-size: 0.95rem; color: #1f2937; }
   .history-empty { font-size: 0.9rem; color: #6b7280; }
-  .auth-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: #1f2937; color: #f9fafb; padding: 0.6rem 0.9rem; border-radius: 8px; max-width: 820px; margin: 0 auto 1.5rem auto; }
-  .auth-bar.hidden { display: none; }
-  .auth-bar button { background: #ef4444; }
-  .auth-bar button:hover { background: #dc2626; }
     #scoreBlock { margin: 1rem 0; text-align: center; }
     #wordsBlock { margin-top: 1rem; }
     table { width: 100%; border-collapse: collapse; text-align: left; }
@@ -81,21 +89,13 @@
   .rec-card .right { flex:1 1 auto; min-width:0; }
   .rec-card canvas { background:transparent; }
   .word-table { margin-top:8px; font-size:0.92rem; border-top:1px dashed #eee; padding-top:8px; }
+  .word-table-hint { font-size:0.85rem; color: #4b5563; margin-bottom: 0.5rem; }
     @media (max-width: 768px) { body { padding: 0.5rem; } .card { padding: 1rem; } h1 { font-size: 1.5rem; } button { padding: 0.6rem 1rem; font-size: 0.9rem; } }
   </style>
 </head>
 <body>
 
-<h1>　毎日が成長日：リスニング＆発音トレーニング道場</h1>
-<div id="authBar" class="auth-bar hidden">
-  <span id="authUserDisplay"></span>
-  <button id="logoutBtn" type="button">ログアウト</button>
-</div>
-<div class="full-audio-block">
-  <h2 class="full-audio-title">お手本ニュース音声</h2>
-  <p class="full-audio-caption">まずはニュース全体を通して聞き、発音やリズムを確認しましょう。</p>
-  <audio controls src="" id="fullAudio" style="width: 100%; display: block;"></audio>
-</div>
+<h1>英語の筋トレ</h1>
 <div id="sentence-sections"></div>
 
 <script>
@@ -124,12 +124,6 @@ const audioFolderName = "With $500B US investment, Apple pulling away from China
 // Encode folder name so static hosts serve files even with spaces/symbols in path
 const base = `./${encodeURIComponent(audioFolderName)}`;
 const container = document.getElementById("sentence-sections");
-
-// Set up full audio player
-const fullAudio = document.getElementById("fullAudio");
-if (fullAudio) {
-  fullAudio.src = `${base}/full_audio.mp3`;
-}
 
 const AUTH_STORAGE_KEY = 'ela_auth_session';
 const authState = { token: null, userId: null, expiresAt: 0 };
@@ -226,21 +220,7 @@ function purgeUserScopedData(userId) {
   }
 }
 
-function updateAuthBar() {
-  const bar = document.getElementById('authBar');
-  if (!bar) return;
-  const label = document.getElementById('authUserDisplay');
-  const logoutBtn = document.getElementById('logoutBtn');
-  if (authState.userId) {
-    if (label) label.textContent = `ログイン中: ${authState.userId}`;
-    bar.classList.remove('hidden');
-    if (logoutBtn) logoutBtn.disabled = false;
-  } else {
-    if (label) label.textContent = '';
-    bar.classList.add('hidden');
-    if (logoutBtn) logoutBtn.disabled = false;
-  }
-}
+function updateAuthBar() {}
 
 function logoutUser(options = {}) {
   const currentUser = authState.userId;
@@ -261,19 +241,232 @@ function logoutUser(options = {}) {
 }
 
 const EVAL_HISTORY_LIMIT = 20;
-const LISTENING_EVAL_LIMIT = 10;
-const TRANSLATION_EVAL_LIMIT = 10;
-const PRONUNCIATION_EVAL_LIMIT = 10;
+const DEFAULT_SECTION_LIMIT = 10;
+const DEFAULT_SECTION_COUNT = sentences.length;
+let sectionCount = DEFAULT_SECTION_COUNT;
+let sectionLimits = {
+  listening: DEFAULT_SECTION_LIMIT,
+  translation: DEFAULT_SECTION_LIMIT,
+  pronunciation: DEFAULT_SECTION_LIMIT
+};
+
+const USAGE_TYPE_FIELD_MAP = Object.freeze({
+  listening: 'listeningUsed',
+  translation: 'translationUsed',
+  pronunciation: 'pronunciationUsed'
+});
+
+class QuotaError extends Error {
+  constructor(message, detail = null) {
+    super(message);
+    this.name = 'QuotaError';
+    this.detail = detail;
+  }
+}
+
+function computeGlobalLimitFromSections(type) {
+  const perSection = sectionLimits[type];
+  if (!Number.isFinite(perSection) || perSection <= 0) return Infinity;
+  const count = Math.max(1, sectionCount);
+  return perSection * count;
+}
+
+const quotaState = {
+  initialized: false,
+  loading: false,
+  usage: {
+    listeningUsed: 0,
+    translationUsed: 0,
+    pronunciationUsed: 0,
+    resetAt: null,
+    updatedAt: null
+  },
+  limits: {
+    listening: computeGlobalLimitFromSections('listening'),
+    translation: computeGlobalLimitFromSections('translation'),
+    pronunciation: computeGlobalLimitFromSections('pronunciation')
+  },
+  remaining: {
+    listening: Infinity,
+    translation: Infinity,
+    pronunciation: Infinity
+  },
+  sectionCount,
+  storage: null,
+  error: null
+};
+
+function coerceLimitValue(value, fallback) {
+  if (value === undefined) {
+    return fallback;
+  }
+  if (value === null || value === 'unlimited') {
+    return Infinity;
+  }
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) return Infinity;
+  return Math.floor(num);
+}
+
+function recomputeQuotaRemaining() {
+  const next = { listening: Infinity, translation: Infinity, pronunciation: Infinity };
+  for (const type of Object.keys(USAGE_TYPE_FIELD_MAP)) {
+    const limit = quotaState.limits[type];
+    const field = USAGE_TYPE_FIELD_MAP[type];
+    const used = Number(quotaState.usage[field] || 0);
+    if (!Number.isFinite(limit) || limit <= 0) {
+      next[type] = Infinity;
+    } else {
+      next[type] = Math.max(0, Math.floor(limit) - Math.max(0, Math.floor(used)));
+    }
+  }
+  quotaState.remaining = next;
+}
+
+function applyQuotaPayload(payload = {}, options = {}) {
+  if (payload.sectionCount !== undefined) {
+    const parsedCount = Number(payload.sectionCount);
+    if (Number.isFinite(parsedCount) && parsedCount > 0) {
+      sectionCount = Math.max(1, Math.floor(parsedCount));
+      quotaState.sectionCount = sectionCount;
+    }
+  }
+
+  if (payload.perSectionLimits && typeof payload.perSectionLimits === 'object') {
+    sectionLimits = {
+      listening: coerceLimitValue(payload.perSectionLimits.listening, sectionLimits.listening),
+      translation: coerceLimitValue(payload.perSectionLimits.translation, sectionLimits.translation),
+      pronunciation: coerceLimitValue(payload.perSectionLimits.pronunciation, sectionLimits.pronunciation)
+    };
+  }
+
+  if (payload.limits && typeof payload.limits === 'object') {
+    quotaState.limits = {
+      listening: coerceLimitValue(payload.limits.listening, quotaState.limits.listening),
+      translation: coerceLimitValue(payload.limits.translation, quotaState.limits.translation),
+      pronunciation: coerceLimitValue(payload.limits.pronunciation, quotaState.limits.pronunciation)
+    };
+  } else if (!quotaState.initialized || payload.perSectionLimits || payload.sectionCount !== undefined) {
+    quotaState.limits = {
+      listening: computeGlobalLimitFromSections('listening'),
+      translation: computeGlobalLimitFromSections('translation'),
+      pronunciation: computeGlobalLimitFromSections('pronunciation')
+    };
+  }
+
+  if (payload.usage && typeof payload.usage === 'object') {
+    quotaState.usage = Object.assign({}, quotaState.usage, payload.usage);
+  }
+
+  if (payload.remaining && typeof payload.remaining === 'object') {
+    quotaState.remaining = Object.assign({}, quotaState.remaining, payload.remaining);
+  } else {
+    recomputeQuotaRemaining();
+  }
+
+  if (payload.storage) quotaState.storage = payload.storage;
+  quotaState.error = payload.error || null;
+  quotaState.initialized = true;
+
+  if (!options || options.silent !== true) {
+    updateAllQuotaDisplays();
+  }
+}
+
+function getGlobalQuotaRemaining(type) {
+  if (!quotaState.initialized) return Infinity;
+  const value = quotaState.remaining?.[type];
+  if (value === null || value === undefined) return Infinity;
+  if (!Number.isFinite(value)) return Infinity;
+  return Math.max(0, value);
+}
+
+function isGlobalQuotaExhausted(type) {
+  if (!quotaState.initialized) return false;
+  const remaining = getGlobalQuotaRemaining(type);
+  return Number.isFinite(remaining) && remaining <= 0;
+}
+
+async function refreshUsageState(options = {}) {
+  if (quotaState.loading && options.skipIfLoading) return quotaState;
+  quotaState.loading = true;
+  try {
+    const res = await authedFetch('/api/usage', { method: 'GET' });
+    const payload = await res.json().catch(() => null);
+    if (res.ok) {
+      applyQuotaPayload(payload || {}, options);
+    } else {
+      const message = payload?.error || `usage fetch failed (${res.status})`;
+      quotaState.error = message;
+      if (!options || options.silent !== true) {
+        console.warn(message);
+      }
+    }
+  } catch (err) {
+    quotaState.error = err;
+    if (!options || options.silent !== true) {
+      console.warn('refreshUsageState failed', err);
+    }
+  } finally {
+    quotaState.loading = false;
+  }
+  return quotaState;
+}
+
+async function reserveQuotaUsage(type, amount = 1) {
+  const normalizedType = typeof type === 'string' ? type.trim().toLowerCase() : '';
+  if (!normalizedType) throw new Error('type is required');
+  const payload = { type: normalizedType, amount }; // optimistic payload; server validates amount
+  try {
+    const res = await authedFetch('/api/usage', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const body = await res.json().catch(() => null);
+    if (res.status === 429) {
+      applyQuotaPayload(body || {}, { silent: true });
+      throw new QuotaError('AI利用回数の上限に達しました。', body?.limitExceeded || null);
+    }
+    if (!res.ok) {
+      const message = body?.error || `usage update failed (${res.status})`;
+      throw new Error(message);
+    }
+    applyQuotaPayload(body || {}, { silent: false });
+    return body;
+  } catch (err) {
+    if (err instanceof QuotaError) throw err;
+    quotaState.error = err;
+    throw err;
+  }
+}
+
+function updateAllQuotaDisplays() {
+  if (!Array.isArray(sentences)) return;
+  for (let idx = 0; idx < sentences.length; idx += 1) {
+    updateEvaluationQuotaDisplay('listening', idx);
+    updateEvaluationQuotaDisplay('translation', idx);
+    updatePronunciationQuotaDisplay(idx);
+  }
+}
 
 function evaluationHistoryKey(type, idx) {
   return `${type}History_${idx}`;
+}
+
+function normalizeScoreValue(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return null;
+  const clamped = Math.max(0, Math.min(100, num));
+  return Math.round(clamped);
 }
 
 function sanitizeHistoryEntry(entry) {
   if (!entry || typeof entry !== 'object') return null;
   const input = String(entry.input ?? entry.listen ?? entry.student ?? '').trim();
   const feedback = String(entry.feedback ?? entry.result ?? entry.response ?? '').trim();
-  if (!input && !feedback) return null;
+  const score = normalizeScoreValue(entry.score ?? entry.points ?? entry.rating);
+  if (!input && !feedback && score === null) return null;
   const rawTs = entry.createdAt || entry.savedAt || entry.timestamp || entry.time;
   let iso = null;
   if (rawTs) {
@@ -281,7 +474,32 @@ function sanitizeHistoryEntry(entry) {
     if (!Number.isNaN(parsed.getTime())) iso = parsed.toISOString();
   }
   if (!iso) iso = new Date().toISOString();
-  return { input, feedback, createdAt: iso };
+  return { input, feedback, score, createdAt: iso };
+}
+
+function parseEvaluationScorePayload(rawText) {
+  const fallback = { score: null, feedback: (rawText || '').trim() };
+  if (!rawText || typeof rawText !== 'string') return fallback;
+  let candidate = rawText.trim();
+  if (!candidate) return fallback;
+  if (!candidate.startsWith('{')) {
+    const match = candidate.match(/\{[\s\S]*\}/);
+    if (match && match[0]) {
+      candidate = match[0];
+    }
+  }
+  try {
+    const parsed = JSON.parse(candidate);
+    const score = normalizeScoreValue(parsed.score);
+    const feedbackText = String(parsed.feedback ?? '').trim();
+    return {
+      score,
+      feedback: feedbackText || fallback.feedback
+    };
+  } catch (err) {
+    console.warn('parseEvaluationScorePayload failed', err);
+    return fallback;
+  }
 }
 
 function loadEvaluationHistory(type, idx) {
@@ -299,6 +517,85 @@ function loadEvaluationHistory(type, idx) {
     console.warn('loadEvaluationHistory parse failed', e);
   }
   return [];
+}
+
+const TREND_ID_RESOLVER = {
+  listening: idx => `listeningTrend_${idx}`,
+  translation: idx => `translationTrend_${idx}`,
+  pronunciation: idx => `pronunciationTrend_${idx}`
+};
+
+function normalizeTrendType(type) {
+  if (type === 'translation' || type === 'pronunciation') return type;
+  return 'listening';
+}
+
+function computeScoreTrendSnapshot(type, idx, historyOverride = null) {
+  const normalized = normalizeTrendType(type);
+  const history = Array.isArray(historyOverride) ? historyOverride : loadEvaluationHistory(normalized, idx);
+  const recentDesc = [];
+  for (const entry of history) {
+    const score = Number(entry?.score);
+    if (Number.isFinite(score)) {
+      recentDesc.push(score);
+      if (recentDesc.length >= 3) break;
+    }
+  }
+  if (!recentDesc.length) {
+    return {
+      normalized,
+      text: '',
+      title: 'スコア記録がありません',
+      latest: null,
+      best: null,
+      sequenceCompact: ''
+    };
+  }
+  const chronological = recentDesc.slice().reverse();
+  const display = chronological.map(score => `${score}点`).join(' → ');
+  const latest = chronological[chronological.length - 1];
+  const previous = chronological.length >= 2 ? chronological[chronological.length - 2] : null;
+  let deltaText = '';
+  if (previous !== null) {
+    const delta = latest - previous;
+    if (delta > 0) deltaText = ` (↑+${delta})`;
+    else if (delta < 0) deltaText = ` (↓${Math.abs(delta)})`;
+  }
+  const best = chronological.reduce((max, score) => Math.max(max, score), -Infinity);
+  const sequenceCompact = chronological.map(score => `${score}`).join(' → ');
+  return {
+    normalized,
+    text: `${display}${deltaText}`,
+    title: `最新: ${latest}点 / 最高: ${best}点`,
+    latest,
+    best,
+    sequenceCompact
+  };
+}
+
+function updateScoreTrend(type, idx, historyOverride = null) {
+  const snapshot = computeScoreTrendSnapshot(type, idx, historyOverride);
+  const resolver = TREND_ID_RESOLVER[snapshot.normalized];
+  const trendEl = resolver ? document.getElementById(resolver(idx)) : null;
+  if (trendEl) {
+    trendEl.textContent = snapshot.text;
+    trendEl.title = snapshot.title;
+  }
+  return snapshot;
+}
+
+function getEntryTrendSegments(idx, overrides = {}) {
+  const types = ['listening', 'translation', 'pronunciation'];
+  const segments = [];
+  types.forEach(type => {
+    const snapshot = overrides[type] || computeScoreTrendSnapshot(type, idx);
+    if (snapshot.text) {
+      const label = type === 'translation' ? '和訳' : (type === 'pronunciation' ? '発音' : '聞き取り');
+      const sequence = (snapshot.sequenceCompact || snapshot.text).replace(/\s*→\s*/g, ' → ');
+      segments.push({ type, label, sequence, title: snapshot.title });
+    }
+  });
+  return segments;
 }
 
 function saveEvaluationHistory(type, idx, history) {
@@ -343,7 +640,8 @@ function evaluationHistoryEntryKey(entry) {
   const created = entry.createdAt || '';
   const input = entry.input || '';
   const feedback = entry.feedback || '';
-  return `${created}__${input}__${feedback}`;
+  const score = Number.isFinite(entry.score) ? String(entry.score) : '';
+  return `${created}__${input}__${feedback}__${score}`;
 }
 
 function formatHistoryTimestamp(raw) {
@@ -395,16 +693,22 @@ function decodeHistoryEntryKey(encodedKey) {
 }
 
 function renderEvaluationHistory(type, idx, entries) {
-  const container = document.getElementById(`${type}History_${idx}`);
-  if (!container) return;
   const history = Array.isArray(entries) ? entries : loadEvaluationHistory(type, idx);
+  const container = document.getElementById(`${type}History_${idx}`);
+  if (!container) {
+    updateScoreTrend(type, idx, history);
+    return;
+  }
   container.innerHTML = '';
   if (!history.length) {
     const empty = document.createElement('div');
     empty.className = 'history-empty';
     empty.textContent = type === 'translation' ? 'まだ翻訳評価はありません。' : 'まだリスニング評価はありません。';
     container.appendChild(empty);
-    updateEvaluationQuotaDisplay(type, idx);
+    if (type === 'listening' || type === 'translation') {
+      updateEvaluationQuotaDisplay(type, idx);
+    }
+    updateScoreTrend(type, idx, history);
     return;
   }
   history.forEach(entry => {
@@ -416,6 +720,12 @@ function renderEvaluationHistory(type, idx, entries) {
     const timeEl = document.createElement('time');
     timeEl.textContent = formatHistoryTimestamp(entry.createdAt) || '日時不明';
     header.appendChild(timeEl);
+    if (Number.isFinite(entry?.score)) {
+      const scoreEl = document.createElement('span');
+      scoreEl.className = 'history-score';
+      scoreEl.textContent = `スコア ${entry.score}点`;
+      header.appendChild(scoreEl);
+    }
     const deleteBtn = document.createElement('button');
     deleteBtn.type = 'button';
     deleteBtn.className = 'history-delete';
@@ -452,11 +762,14 @@ function renderEvaluationHistory(type, idx, entries) {
 
     container.appendChild(wrapper);
   });
-  updateEvaluationQuotaDisplay(type, idx);
+  if (type === 'listening' || type === 'translation') {
+    updateEvaluationQuotaDisplay(type, idx);
+  }
+  updateScoreTrend(type, idx, history);
 }
 
-function appendEvaluationHistory(type, idx, input, feedback, createdAt = null, options = {}) {
-  const baseEntry = sanitizeHistoryEntry({ input, feedback, createdAt });
+function appendEvaluationHistory(type, idx, input, feedback, score = null, createdAt = null, options = {}) {
+  const baseEntry = sanitizeHistoryEntry({ input, feedback, score, createdAt });
   if (!baseEntry) return;
   const current = loadEvaluationHistory(type, idx);
   if (!options.allowDuplicate) {
@@ -475,17 +788,82 @@ function getEvaluationHistoryCount(type, idx) {
   return loadEvaluationHistory(type, idx).length;
 }
 
+function normalizeEvaluationType(type) {
+  return type === 'translation' ? 'translation' : 'listening';
+}
+
+function evaluationAttemptsKey(type, idx) {
+  const normalized = normalizeEvaluationType(type);
+  return `${normalized}Attempts_${idx}`;
+}
+
+function getStoredEvaluationAttempts(type, idx) {
+  try {
+    const raw = storageGet(evaluationAttemptsKey(type, idx));
+    const num = Number(raw);
+    if (!Number.isFinite(num) || num < 0) return 0;
+    return Math.floor(num);
+  } catch (err) {
+    console.warn('getStoredEvaluationAttempts failed', err);
+    return 0;
+  }
+}
+
+function setStoredEvaluationAttempts(type, idx, value) {
+  try {
+    storageSet(evaluationAttemptsKey(type, idx), String(Math.max(0, Math.floor(value))));
+  } catch (err) {
+    console.warn('setStoredEvaluationAttempts failed', err);
+  }
+}
+
+function getEvaluationAttempts(type, idx) {
+  const normalized = normalizeEvaluationType(type);
+  const stored = getStoredEvaluationAttempts(normalized, idx);
+  const historyCount = getEvaluationHistoryCount(normalized, idx);
+  if (historyCount > stored) {
+    setStoredEvaluationAttempts(normalized, idx, historyCount);
+    return historyCount;
+  }
+  return stored;
+}
+
+function incrementEvaluationAttempts(type, idx) {
+  const normalized = normalizeEvaluationType(type);
+  const next = getEvaluationAttempts(normalized, idx) + 1;
+  setStoredEvaluationAttempts(normalized, idx, next);
+  return next;
+}
+
 function updateEvaluationQuotaDisplay(type, idx) {
   const el = document.getElementById(`${type}Quota_${idx}`);
   if (!el) return;
-  const limit = type === 'translation' ? TRANSLATION_EVAL_LIMIT : LISTENING_EVAL_LIMIT;
+  const limit = type === 'translation' ? sectionLimits.translation : sectionLimits.listening;
   const label = type === 'translation' ? '和訳評価' : '聞き取り評価';
   try {
-    const count = getEvaluationHistoryCount(type, idx);
-    const remaining = Math.max(0, limit - count);
-    el.textContent = `残り${remaining}回`;
-    el.style.color = remaining === 0 ? '#b91c1c' : '#059669';
-    el.title = `${label}は1セクションにつき${limit}回まで`;
+    const count = getEvaluationAttempts(type, idx);
+    const sectionRemaining = Number.isFinite(limit) ? Math.max(0, Math.floor(limit) - count) : Infinity;
+    const globalRemaining = getGlobalQuotaRemaining(type);
+    const remaining = Number.isFinite(sectionRemaining)
+      ? (Number.isFinite(globalRemaining) ? Math.min(sectionRemaining, globalRemaining) : sectionRemaining)
+      : globalRemaining;
+    const remainingDisplay = Number.isFinite(remaining) ? remaining : '∞';
+    el.textContent = `残り${remainingDisplay}回`;
+    const exhausted = (Number.isFinite(remaining) && remaining <= 0) || (Number.isFinite(globalRemaining) && globalRemaining <= 0);
+    el.style.color = exhausted ? '#b91c1c' : '#059669';
+    if (Number.isFinite(limit)) {
+      if (Number.isFinite(globalRemaining)) {
+        el.title = `${label}は1セクションにつき${limit}回まで（全体残り${globalRemaining}回）`;
+      } else {
+        el.title = `${label}は1セクションにつき${limit}回まで`;
+      }
+    } else {
+      if (Number.isFinite(globalRemaining)) {
+        el.title = `${label}のローカル上限はありません（全体残り${globalRemaining}回）`;
+      } else {
+        el.title = `${label}のローカル上限はありません`;
+      }
+    }
   } catch (err) {
     console.warn('updateEvaluationQuotaDisplay failed', type, idx, err);
   }
@@ -525,10 +903,68 @@ function incrementPronunciationAttempts(idx) {
 
 function isPronunciationLimitReached(idx) {
   try {
-    return getPronunciationAttempts(idx) >= PRONUNCIATION_EVAL_LIMIT;
+    if (isGlobalQuotaExhausted('pronunciation')) return true;
+    if (!Number.isFinite(sectionLimits.pronunciation)) return false;
+    return getPronunciationAttempts(idx) >= Math.floor(sectionLimits.pronunciation);
   } catch (e) {
     console.warn('isPronunciationLimitReached failed', e);
     return false;
+  }
+}
+
+function updatePronunciationQuotaDisplay(idx) {
+  const recQuota = document.getElementById(`recQuota_${idx}`);
+  const headerQuota = document.getElementById(`pronunciationQuota_${idx}`);
+  if (!recQuota && !headerQuota) return;
+  try {
+    const attempts = getPronunciationAttempts(idx);
+    const localLimit = sectionLimits.pronunciation;
+    const localRemaining = Number.isFinite(localLimit)
+      ? Math.max(0, Math.floor(localLimit) - attempts)
+      : Infinity;
+    const globalRemaining = getGlobalQuotaRemaining('pronunciation');
+    const remaining = Number.isFinite(localRemaining)
+      ? (Number.isFinite(globalRemaining) ? Math.min(localRemaining, globalRemaining) : localRemaining)
+      : globalRemaining;
+    const displayValue = Number.isFinite(remaining) ? remaining : '∞';
+    const exhausted = (Number.isFinite(remaining) && remaining <= 0) || (Number.isFinite(globalRemaining) && globalRemaining <= 0);
+    const text = `残り${displayValue}回`;
+    const color = exhausted ? '#b91c1c' : '#059669';
+    let title = '';
+    if (Number.isFinite(localLimit)) {
+      if (Number.isFinite(globalRemaining)) {
+        title = `発音評価は1セクションにつき${localLimit}回まで（全体残り${globalRemaining}回）`;
+      } else {
+        title = `発音評価は1セクションにつき${localLimit}回まで`;
+      }
+    } else {
+      if (Number.isFinite(globalRemaining)) {
+        title = `発音評価のローカル上限はありません（全体残り${globalRemaining}回）`;
+      } else {
+        title = '発音評価のローカル上限はありません';
+      }
+    }
+    if (recQuota) {
+      recQuota.textContent = text;
+      recQuota.style.color = color;
+      recQuota.title = title;
+    }
+    if (headerQuota) {
+      headerQuota.textContent = text;
+      headerQuota.style.color = color;
+      headerQuota.title = title;
+    }
+  } catch (err) {
+    console.warn('updatePronunciationQuotaDisplay failed', err);
+  }
+}
+
+function setPronunciationLimitMessage(statusEl) {
+  if (!statusEl) return;
+  if (isGlobalQuotaExhausted('pronunciation')) {
+    statusEl.textContent = 'AI利用回数の上限に達しました。';
+  } else if (Number.isFinite(sectionLimits.pronunciation)) {
+    statusEl.textContent = `発音評価は1セクションにつき${sectionLimits.pronunciation}回までです。`;
   }
 }
 
@@ -724,22 +1160,39 @@ function updateEntrySummary(idx) {
   const syncText = document.getElementById(`syncStatus_${idx}`)?.textContent?.trim() || "";
   const isDirty = entryEl?.dataset?.dirty === '1';
 
+  const trendSegments = getEntryTrendSegments(idx);
+  const segmentMap = trendSegments.reduce((acc, seg) => {
+    acc[seg.type] = seg;
+    return acc;
+  }, {});
+
   const listeningDone = listeningHistoryCount > 0;
   const translationDone = translationHistoryCount > 0;
   const recordingDone = recCount > 0;
   if (statusEl) {
-    const statuses = [
-      `聞き取り${listeningDone ? '✅' : '⬜'}`,
-      `和訳${translationDone ? '✅' : '⬜'}`,
-      `録音${recordingDone ? '✅' : '⬜'}`
+    const statusConfigs = [
+      { type: 'listening', label: '聞き取り', done: listeningDone },
+      { type: 'translation', label: '和訳', done: translationDone },
+      { type: 'pronunciation', label: '発音', done: recordingDone }
     ];
-    statusEl.textContent = statuses.join('　');
+    const statusHtml = statusConfigs.map(cfg => {
+      const mark = cfg.done ? '✅' : '⬜';
+      const seg = segmentMap[cfg.type];
+      const seqText = (cfg.done && seg && seg.sequence) ? seg.sequence : '';
+      const seqHtml = seqText ? `<span class="status-sequence">${seqText}</span>` : '';
+      const stateClass = cfg.done ? 'done' : 'pending';
+      return `<span class="status-pill ${stateClass}">${cfg.label}${mark}${seqHtml}</span>`;
+    }).join('');
+    statusEl.innerHTML = statusHtml;
     const extras = [];
     if (isDirty) extras.push('未保存の変更あり');
     if (/保存中/.test(syncText)) extras.push('保存中');
     else if (/保存済/.test(syncText) || /読み込み/.test(syncText)) extras.push('サーバーと同期済み');
     else if (/失敗/.test(syncText)) extras.push('保存に失敗');
     else if (/ありません/.test(syncText)) extras.push('サーバーデータなし');
+    if (trendSegments.length) {
+      extras.push(trendSegments.map(seg => `${seg.label}: ${seg.sequence}`).join(' / '));
+    }
     statusEl.title = extras.length ? extras.join(' / ') : '';
   }
 
@@ -761,7 +1214,7 @@ function buildSections() {
     <details class="entry" data-section="${idx}">
       <summary>
         <span class="entry-title">${idx + 1}/${totalSections}</span>
-        <span class="entry-status" id="status${idx}">聞き取り⬜　和訳⬜　録音⬜</span>
+        <span class="entry-status" id="status${idx}">聞き取り⬜　和訳⬜　発音⬜</span>
         <span class="entry-snippet" id="summarySnippet_${idx}" style="display:none;"></span>
       </summary>
       <div class="entry-body">
@@ -769,44 +1222,61 @@ function buildSections() {
         <div id="syncStatus_${idx}" style="font-size:0.9rem;color:#4b5563;margin-bottom:10px"></div>
     <button class="collapsible script-toggle primary-script">📜 スクリプトを表示</button>
     <div class="content script-content primary-script-content" style="display:none;"></div>
-        <div class="evaluation-block listening-block">
+        <div class="evaluation-block listening-block" data-idx="${idx}">
           <div class="evaluation-header">
             <h3 class="evaluation-title">リスニング評価</h3>
+            <span class="score-trend" id="listeningTrend_${idx}"></span>
             <span class="eval-quota" id="listeningQuota_${idx}"></span>
-            <button id="note_${idx}_compare">リスニング評価</button>
+            <button type="button" class="evaluation-toggle listening-toggle" data-idx="${idx}" aria-expanded="true">－ 詳細を隠す</button>
           </div>
-          <textarea id="note_${idx}_input" placeholder="聞こえた文を入力…"></textarea>
-          <div class="evaluation-history" id="listeningHistory_${idx}"></div>
+          <div class="evaluation-body listening-body" id="listeningBody_${idx}" aria-hidden="false">
+            <textarea id="note_${idx}_input" placeholder="聞こえた文を入力…"></textarea>
+            <div class="evaluation-actions">
+              <button id="note_${idx}_compare">リスニング評価</button>
+            </div>
+            <div class="evaluation-history" id="listeningHistory_${idx}"></div>
+          </div>
         </div>
-        <div class="evaluation-block translation-block">
+        <div class="evaluation-block translation-block" data-idx="${idx}">
           <div class="evaluation-header">
             <h3 class="evaluation-title">翻訳評価</h3>
+            <span class="score-trend" id="translationTrend_${idx}"></span>
             <span class="eval-quota" id="translationQuota_${idx}"></span>
-            <button id="trans_${idx}_compare">翻訳評価</button>
+            <button type="button" class="evaluation-toggle translation-toggle" data-idx="${idx}" aria-expanded="true">－ 詳細を隠す</button>
           </div>
-          <textarea id="trans_${idx}_input" placeholder="日本語訳を入力…"></textarea>
-          <div class="evaluation-history" id="translationHistory_${idx}"></div>
+          <div class="evaluation-body translation-body" id="translationBody_${idx}" aria-hidden="false">
+            <textarea id="trans_${idx}_input" placeholder="日本語訳を入力…"></textarea>
+            <div class="evaluation-actions">
+              <button id="trans_${idx}_compare">翻訳評価</button>
+            </div>
+            <div class="evaluation-history" id="translationHistory_${idx}"></div>
+          </div>
         </div>
-        <div class="evaluation-block pronunciation-block">
+        <div class="evaluation-block pronunciation-block" data-idx="${idx}">
           <div class="evaluation-header">
             <h3 class="evaluation-title">発音評価</h3>
+            <span class="score-trend" id="pronunciationTrend_${idx}"></span>
+            <span class="eval-quota" id="pronunciationQuota_${idx}"></span>
+            <button type="button" class="evaluation-toggle pronunciation-toggle" data-idx="${idx}" aria-expanded="true">－ 詳細を隠す</button>
           </div>
-          <audio controls src="${base}/${idx + 1}.mp3" class="sample-audio" style="margin-top:0.5rem;margin-bottom:0.5rem;"></audio>
-          <button class="collapsible script-toggle secondary-script">📜 スクリプトを表示</button>
-          <div class="content script-content secondary-script-content" style="display:none;"></div>
-          <div class="pronunciation-controls">
-            <button id="recToggle_${idx}" class="rec-toggle">🎙️ 録音開始</button>
-            <span id="recStatus_${idx}" class="pronunciation-status"></span>
-            <span id="recTimer_${idx}" class="pronunciation-timer"></span>
-            <div class="pronunciation-actions">
-              <span id="recQuota_${idx}" class="eval-quota"></span>
-              <button id="submitBtn_${idx}" class="pronunciation-submit" disabled>発音評価を実行</button>
+          <div class="evaluation-body pronunciation-body" id="pronunciationBody_${idx}" aria-hidden="false">
+            <audio controls src="${base}/${idx + 1}.mp3" class="sample-audio" style="margin-top:0.5rem;margin-bottom:0.5rem;"></audio>
+            <button class="collapsible script-toggle secondary-script">📜 スクリプトを表示</button>
+            <div class="content script-content secondary-script-content" style="display:none;"></div>
+            <div class="pronunciation-controls">
+              <button id="recToggle_${idx}" class="rec-toggle">🎙️ 録音開始</button>
+              <span id="recStatus_${idx}" class="pronunciation-status"></span>
+              <span id="recTimer_${idx}" class="pronunciation-timer"></span>
+              <div class="pronunciation-actions">
+                <span id="recQuota_${idx}" class="eval-quota"></span>
+                <button id="submitBtn_${idx}" class="pronunciation-submit" disabled>発音評価を実行</button>
+              </div>
             </div>
+            <pre id="result_${idx}" style="margin:0;padding:0;"></pre>
+            <div id="pendingPreview_${idx}" class="pending-preview"></div>
+            <div id="recList_${idx}" style="margin-top:10px;"></div>
+            <div id="scoreBlock_${idx}"></div>
           </div>
-          <pre id="result_${idx}" style="margin:0;padding:0;"></pre>
-          <div id="pendingPreview_${idx}" class="pending-preview"></div>
-          <div id="recList_${idx}" style="margin-top:10px;"></div>
-          <div id="scoreBlock_${idx}"></div>
         </div>
       </div>
     </details>
@@ -823,6 +1293,15 @@ function setupBlock(idx, sentence) {
   const primaryScriptContent = cardRoot?.querySelector(".primary-script-content");
   const secondaryScriptBtn = cardRoot?.querySelector(".secondary-script");
   const secondaryScriptContent = cardRoot?.querySelector(".secondary-script-content");
+  const listeningBlock = cardRoot?.querySelector('.listening-block');
+  const listeningToggle = cardRoot?.querySelector(`.listening-toggle[data-idx="${idx}"]`);
+  const listeningBody = document.getElementById(`listeningBody_${idx}`);
+  const translationBlock = cardRoot?.querySelector('.translation-block');
+  const translationToggle = cardRoot?.querySelector(`.translation-toggle[data-idx="${idx}"]`);
+  const translationBody = document.getElementById(`translationBody_${idx}`);
+  const pronunciationBlock = cardRoot?.querySelector('.pronunciation-block');
+  const pronunciationToggle = cardRoot?.querySelector(`.pronunciation-toggle[data-idx="${idx}"]`);
+  const pronunciationBody = document.getElementById(`pronunciationBody_${idx}`);
 
   const noteInput = document.getElementById(`note_${idx}_input`);
   const transInput = document.getElementById(`trans_${idx}_input`);
@@ -832,6 +1311,33 @@ function setupBlock(idx, sentence) {
   const recToggleBtn = document.getElementById(`recToggle_${idx}`);
 
   if (entryEl) entryEl.dataset.dirty = '0';
+
+  if (listeningBlock && listeningToggle && listeningBody) {
+    listeningToggle.addEventListener('click', () => {
+      const collapsed = listeningBlock.classList.toggle('collapsed');
+      listeningToggle.textContent = collapsed ? '＋ 詳細を表示' : '－ 詳細を隠す';
+      listeningToggle.setAttribute('aria-expanded', String(!collapsed));
+      listeningBody.setAttribute('aria-hidden', String(collapsed));
+    });
+  }
+
+  if (translationBlock && translationToggle && translationBody) {
+    translationToggle.addEventListener('click', () => {
+      const collapsed = translationBlock.classList.toggle('collapsed');
+      translationToggle.textContent = collapsed ? '＋ 詳細を表示' : '－ 詳細を隠す';
+      translationToggle.setAttribute('aria-expanded', String(!collapsed));
+      translationBody.setAttribute('aria-hidden', String(collapsed));
+    });
+  }
+
+  if (pronunciationBlock && pronunciationToggle && pronunciationBody) {
+    pronunciationToggle.addEventListener('click', () => {
+      const collapsed = pronunciationBlock.classList.toggle('collapsed');
+      pronunciationToggle.textContent = collapsed ? '＋ 詳細を表示' : '－ 詳細を隠す';
+      pronunciationToggle.setAttribute('aria-expanded', String(!collapsed));
+      pronunciationBody.setAttribute('aria-hidden', String(collapsed));
+    });
+  }
 
   if (entryEl) {
     entryEl.addEventListener("toggle", () => {
@@ -858,6 +1364,7 @@ function setupBlock(idx, sentence) {
   transInput.value = storageGet(`trans_${idx}`) || "";
   renderEvaluationHistory('listening', idx);
   renderEvaluationHistory('translation', idx);
+  updateScoreTrend('pronunciation', idx);
   updateEntrySummary(idx);
   setTimeout(() => {
     fetchAssessmentsForSection().catch(err => console.warn('prefetch assessments failed', err));
@@ -983,7 +1490,7 @@ function setupBlock(idx, sentence) {
           if (remoteCount > current) {
             setPronunciationAttempts(idx, remoteCount);
           }
-          updatePronunciationQuotaDisplay();
+          updatePronunciationQuotaDisplay(idx);
         }
 
         const remoteListeningHistory = Array.isArray(r.listeningHistory) ? r.listeningHistory : [];
@@ -1008,7 +1515,7 @@ function setupBlock(idx, sentence) {
         }
 
   if (syncEl) syncEl.textContent = '';
-        updatePronunciationQuotaDisplay();
+        updatePronunciationQuotaDisplay(idx);
       }
     } catch (error) {
       console.warn('fetchRemoteNotes failed', error);
@@ -1017,7 +1524,7 @@ function setupBlock(idx, sentence) {
       remoteNoteLoading = false;
       notesLoaded = true;
       updateEntrySummary(idx);
-      updatePronunciationQuotaDisplay();
+      updatePronunciationQuotaDisplay(idx);
     }
   }
   // localStorage for in-session persistence; server sync happens when section closes
@@ -1124,22 +1631,8 @@ function setupBlock(idx, sentence) {
   let lastRecordedFile = null;
   const resultBox = document.getElementById(`result_${idx}`);
   const recStatus = document.getElementById(`recStatus_${idx}`);
-  const recQuota = document.getElementById(`recQuota_${idx}`);
 
-  function updatePronunciationQuotaDisplay() {
-    if (!recQuota) return;
-    try {
-      const attempts = getPronunciationAttempts(idx);
-      const remaining = Math.max(0, PRONUNCIATION_EVAL_LIMIT - attempts);
-      recQuota.textContent = `残り${remaining}回`;
-      recQuota.style.color = remaining === 0 ? '#b91c1c' : '#059669';
-      recQuota.title = `発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回まで`;
-    } catch (err) {
-      console.warn('updatePronunciationQuotaDisplay failed', err);
-    }
-  }
-
-  updatePronunciationQuotaDisplay();
+  updatePronunciationQuotaDisplay(idx);
 
   function disposePendingPreview() {
     if (pendingPreview) {
@@ -1240,7 +1733,7 @@ function setupBlock(idx, sentence) {
         if (assessedTotal > currentAttempts) {
           setPronunciationAttempts(idx, assessedTotal);
         }
-        updatePronunciationQuotaDisplay();
+        updatePronunciationQuotaDisplay(idx);
       }
     } catch (error) {
       console.warn('fetchAssessmentsForSection failed', error);
@@ -1248,7 +1741,7 @@ function setupBlock(idx, sentence) {
       assessmentLoading = false;
       assessmentsLoaded = true;
       updateEntrySummary(idx);
-      updatePronunciationQuotaDisplay();
+      updatePronunciationQuotaDisplay(idx);
     }
   }
 
@@ -1336,10 +1829,10 @@ function setupBlock(idx, sentence) {
     try{ if (recorderRef.timerId) clearInterval(recorderRef.timerId); const tEl = document.getElementById(`recTimer_${idx}`); if (tEl) tEl.textContent = ''; }catch(e){}
     const limitReached = isPronunciationLimitReached(idx);
     if (submitBtn) submitBtn.disabled = limitReached;
-    if (limitReached && recStatus) {
-      recStatus.textContent = `発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回までです。`;
+    if (limitReached) {
+      setPronunciationLimitMessage(recStatus);
     }
-    updatePronunciationQuotaDisplay();
+    updatePronunciationQuotaDisplay(idx);
     } catch(e){
       resultBox.textContent = '録音停止エラー: '+e.message;
     } finally {
@@ -1351,7 +1844,7 @@ function setupBlock(idx, sentence) {
         recToggleBtn.textContent = '🎙️ 録音開始';
         recToggleBtn.classList.remove('recording');
       }
-      updatePronunciationQuotaDisplay();
+      updatePronunciationQuotaDisplay(idx);
     }
   }
 
@@ -1390,6 +1883,13 @@ function setupBlock(idx, sentence) {
   // upload blob/file to /api/upload with prefix per section
   async function uploadFileAndAssess(fileBlob){
     resultBox.textContent = 'アップロード中...';
+    if (isGlobalQuotaExhausted('pronunciation')) {
+      setPronunciationLimitMessage(recStatus);
+      updatePronunciationQuotaDisplay(idx);
+      resultBox.textContent = 'AI利用回数の上限に達しました。';
+      if (submitBtn) submitBtn.disabled = true;
+      return;
+    }
     const fd = new FormData();
     fd.append('file', new File([fileBlob], fileBlob.name || `rec_${Date.now()}.wav`, { type: fileBlob.type || 'audio/wav' }));
     const prefix = PAGE_PREFIX + `section_${idx}/`;
@@ -1424,7 +1924,18 @@ function setupBlock(idx, sentence) {
   resultBox.textContent = 'アップロード完了。評価中…';
       // call azure-assess
     const referenceText = sentence;
-  const assessResp = await authedFetch(API_ASSESS, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ audioUrl, referenceText, language: 'en-US' }) });
+      try {
+        await reserveQuotaUsage('pronunciation');
+      } catch (quotaErr) {
+        setPronunciationLimitMessage(recStatus);
+        updatePronunciationQuotaDisplay(idx);
+        if (quotaErr instanceof QuotaError) {
+          throw new Error('AI利用回数の上限に達しました。');
+        }
+        throw quotaErr;
+      }
+      updatePronunciationQuotaDisplay(idx);
+      const assessResp = await authedFetch(API_ASSESS, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ audioUrl, referenceText, language: 'en-US' }) });
       if (!assessResp.ok) { const t = await assessResp.text(); throw new Error('azure-assess failed: '+assessResp.status+' '+t); }
       const assessJson = await assessResp.json();
       // save assessment sidecar: key should be s3Key
@@ -1436,7 +1947,7 @@ function setupBlock(idx, sentence) {
   try { markCardAssessed(idx, s3Key, assessJson, nowIso); } catch(e){}
     displayResults(JSON.stringify(assessJson.result || assessJson?.result || assessJson), idx);
       const attempts = incrementPronunciationAttempts(idx);
-      updatePronunciationQuotaDisplay();
+      updatePronunciationQuotaDisplay(idx);
       try {
         const listeningVal = document.getElementById(`note_${idx}_input`)?.value.trim() || '';
         const translationVal = document.getElementById(`trans_${idx}_input`)?.value.trim() || '';
@@ -1470,10 +1981,10 @@ function setupBlock(idx, sentence) {
     } finally {
       const limitReached = isPronunciationLimitReached(idx);
       if (submitBtn) submitBtn.disabled = limitReached || !lastRecordedFile;
-      if (limitReached && recStatus) {
-        recStatus.textContent = `発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回までです。`;
+      if (limitReached) {
+        setPronunciationLimitMessage(recStatus);
       }
-      updatePronunciationQuotaDisplay();
+      updatePronunciationQuotaDisplay(idx);
     }
     updateEntrySummary(idx);
   }
@@ -1483,10 +1994,14 @@ function setupBlock(idx, sentence) {
     resultBox.textContent = '';
     if (!lastRecordedFile) { resultBox.textContent = '録音を行ってから「発音評価を実行」を押してください。'; return; }
     if (isPronunciationLimitReached(idx)) {
-      alert(`発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回までです。`);
+      if (isGlobalQuotaExhausted('pronunciation')) {
+        alert('AI利用回数の上限に達しました。');
+      } else if (Number.isFinite(sectionLimits.pronunciation)) {
+        alert(`発音評価は1セクションにつき${sectionLimits.pronunciation}回までです。`);
+      }
       if (submitBtn) submitBtn.disabled = true;
-      if (recStatus) recStatus.textContent = `発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回までです。`;
-      updatePronunciationQuotaDisplay();
+      setPronunciationLimitMessage(recStatus);
+      updatePronunciationQuotaDisplay(idx);
       return;
     }
     await uploadFileAndAssess(lastRecordedFile);
@@ -1494,8 +2009,8 @@ function setupBlock(idx, sentence) {
 
   if (submitBtn && isPronunciationLimitReached(idx)) {
     submitBtn.disabled = true;
-    if (recStatus) recStatus.textContent = `発音評価は1セクションにつき${PRONUNCIATION_EVAL_LIMIT}回までです。`;
-    updatePronunciationQuotaDisplay();
+    setPronunciationLimitMessage(recStatus);
+    updatePronunciationQuotaDisplay(idx);
   }
 
   // page-level word toggle removed; per-card controls are used instead
@@ -1504,6 +2019,7 @@ function setupBlock(idx, sentence) {
 // ChatGPT連携（日本語プロンプト）
 async function callChatGPT({ type, idx, inputEl, referenceText, buttonEl }) {
   const isTranslation = type === 'translation';
+  const quotaType = isTranslation ? 'translation' : 'listening';
   const textValue = inputEl?.value ?? '';
   const userText = String(textValue).trim();
   if (!userText) {
@@ -1511,25 +2027,31 @@ async function callChatGPT({ type, idx, inputEl, referenceText, buttonEl }) {
     return;
   }
 
-  if (!isTranslation) {
-    const existing = getEvaluationHistoryCount('listening', idx);
-    if (existing >= LISTENING_EVAL_LIMIT) {
-      alert(`聞き取り評価は1セクションにつき${LISTENING_EVAL_LIMIT}回までです。`);
-      return;
-    }
-  } else {
-    const existing = getEvaluationHistoryCount('translation', idx);
-    if (existing >= TRANSLATION_EVAL_LIMIT) {
-      alert(`翻訳評価は1セクションにつき${TRANSLATION_EVAL_LIMIT}回までです。`);
+  if (isGlobalQuotaExhausted(quotaType)) {
+    alert('AI利用回数の上限に達しました。');
+    updateEvaluationQuotaDisplay(quotaType, idx);
+    return;
+  }
+
+  const localLimit = isTranslation ? sectionLimits.translation : sectionLimits.listening;
+  if (Number.isFinite(localLimit)) {
+    const existing = getEvaluationAttempts(quotaType, idx);
+    if (existing >= Math.floor(localLimit)) {
+      const label = isTranslation ? '翻訳評価' : '聞き取り評価';
+      alert(`${label}は1セクションにつき${localLimit}回までです。`);
+      updateEvaluationQuotaDisplay(quotaType, idx);
       return;
     }
   }
 
   const prompt = isTranslation
-    ? { system: "以下は翻訳評価です。", template: "学習者の訳: {{student}}\n原文: {{reference}}\n誤訳や不足、良い点を日本語で簡潔に指摘してください。" }
+    ? {
+        system: "あなたは日英翻訳を採点する講師です。学習者の和訳を100点満点で評価し、改善点を日本語で丁寧に説明してください。評価はJSONだけで返し、score(整数0-100)とfeedback(日本語コメント)の2つのプロパティを含めてください。",
+        template: "学習者の訳: {{student}}\n原文: {{reference}}\n\n次のJSON形式のみで回答してください:\n{\"score\": <0から100の整数>, \"feedback\": \"日本語コメント\"}"
+      }
     : {
-        system: "あなたは英語リスニングを指導する講師です。学習者が聞き取った英文と公式スクリプトを丁寧に比較し、どの語が正しく、どこに抜けや誤りがあるかを具体的に指摘してください。曖昧な評価や『正しいです』だけで済ませず、改善点・次の練習アイデアも必ず盛り込みます。日本語で分かりやすく、肯定的なトーンを保ちながらフィードバックを返してください。",
-        template: "学習者が聞き取って入力した英文:\n{{student}}\n\n公式の正しいスクリプト:\n{{reference}}\n\n以下の形式で日本語で回答してください。\n1. 全体評価（正確さを一言で）\n2. 良かった点（あれば箇条書き）\n3. 改善点（不足・誤り・順序違いなど具体的に）\n4. 次の練習アドバイス（1つ）"
+        system: "あなたは英語リスニングを指導する講師です。学習者が聞き取った英文と公式スクリプトを丁寧に比較し、正確さを100点満点で採点して、日本語で肯定的かつ具体的な改善コメントを返してください。出力はJSONのみで、score(整数0-100)とfeedback(日本語コメント)を含めてください。",
+        template: "学習者が聞き取って入力した英文:\n{{student}}\n\n公式の正しいスクリプト:\n{{reference}}\n\n次のJSON形式だけで回答してください:\n{\"score\": <0から100の整数>, \"feedback\": \"日本語コメント\"}"
       };
 
   const originalLabel = buttonEl?.textContent;
@@ -1539,15 +2061,21 @@ async function callChatGPT({ type, idx, inputEl, referenceText, buttonEl }) {
   }
 
   try {
+    await reserveQuotaUsage(quotaType);
     const systemPrompt = prompt.system;
     const userPrompt = prompt.template.replace("{{student}}", userText).replace("{{reference}}", referenceText);
-    const body = { model: 'gpt-4', messages: [ { role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt } ] };
+    const body = { model: 'gpt-5.1', messages: [ { role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt } ] };
     const res = await authedFetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!res.ok) throw new Error(`Error: ${res.status} ${res.statusText}`);
     const data = await res.json();
-    const feedback = data.choices?.[0]?.message?.content || '⚠️ 応答がありません。';
+    const rawContent = data.choices?.[0]?.message?.content || '';
+    const parsed = parseEvaluationScorePayload(rawContent);
+    const feedback = parsed.feedback || '⚠️ 応答がありません。';
+    const score = parsed.score;
 
-  appendEvaluationHistory(isTranslation ? 'translation' : 'listening', idx, userText, feedback);
+    const evalType = isTranslation ? 'translation' : 'listening';
+    incrementEvaluationAttempts(evalType, idx);
+    appendEvaluationHistory(evalType, idx, userText, feedback, score);
 
   const legacyKey = isTranslation ? `chatResponse_translation_${idx}` : `chatResponse_listening_${idx}`;
   storageRemove(legacyKey);
@@ -1586,9 +2114,15 @@ async function callChatGPT({ type, idx, inputEl, referenceText, buttonEl }) {
     if (entryEl) entryEl.dataset.dirty = '0';
     const syncEl = document.getElementById(`syncStatus_${idx}`);
     if (syncEl) syncEl.textContent = '保存済み';
+    updateEvaluationQuotaDisplay(quotaType, idx);
   } catch (e) {
-    console.warn('callChatGPT failed', e);
-    alert(`評価に失敗しました: ${e.message}`);
+    if (e instanceof QuotaError) {
+      alert('AI利用回数の上限に達しました。');
+      updateEvaluationQuotaDisplay(quotaType, idx);
+    } else {
+      console.warn('callChatGPT failed', e);
+      alert(`評価に失敗しました: ${e.message}`);
+    }
   } finally {
     if (buttonEl) {
       buttonEl.disabled = false;
@@ -1702,9 +2236,10 @@ function addRecordingCard(sectionIdx, meta){
   left.style = 'display:flex;align-items:center;gap:10px;';
   const canvas = document.createElement('canvas'); canvas.width = 80; canvas.height = 80; canvas.style.width = '72px'; canvas.style.height = '72px';
   const toggleWordsBtn = document.createElement('button');
-  toggleWordsBtn.textContent = '単語';
+  toggleWordsBtn.textContent = '単語評価を見る';
   toggleWordsBtn.className = 'toggle-words-btn';
   toggleWordsBtn.disabled = true;
+  toggleWordsBtn.title = 'クリックすると単語ごとの評価表が開きます';
   toggleWordsBtn.style = 'min-width:72px;';
   left.appendChild(canvas);
   left.appendChild(toggleWordsBtn);
@@ -1739,7 +2274,7 @@ function addRecordingCard(sectionIdx, meta){
 
     // word-level table (hidden initially)
     const wordsContainer = document.createElement('div'); wordsContainer.className = 'word-table'; wordsContainer.style.display = 'none';
-    wordsContainer.innerHTML = `<table style="width:100%;border-collapse:collapse;"><thead><tr><th>単語</th><th>スコア</th><th>判定</th></tr></thead><tbody></tbody></table>`;
+    wordsContainer.innerHTML = `<div class="word-table-hint">クリックした単語ボタンで詳細な単語評価が展開されます。</div><table style="width:100%;border-collapse:collapse;"><thead><tr><th>単語</th><th>スコア</th><th>判定</th></tr></thead><tbody></tbody></table>`;
     right.appendChild(wordsContainer);
 
     // wire up buttons
@@ -1753,8 +2288,8 @@ function addRecordingCard(sectionIdx, meta){
       try{
         const wc = wrapper.querySelector('.word-table');
         if (!wc) return;
-        if (wc.style.display === 'none' || wc.style.display === ''){ wc.style.display = 'block'; toggleWordsBtn.textContent = '隠す'; }
-        else { wc.style.display = 'none'; toggleWordsBtn.textContent = '単語'; }
+        if (wc.style.display === 'none' || wc.style.display === ''){ wc.style.display = 'block'; toggleWordsBtn.textContent = '単語評価を隠す'; }
+        else { wc.style.display = 'none'; toggleWordsBtn.textContent = '単語評価を見る'; }
       }catch(e){ console.warn('toggleWordsBtn', e); }
     };
 
@@ -1792,7 +2327,14 @@ function markCardAssessed(sectionIdx, s3Key, assessJson, savedAt){
   const nb = (assessJson && (assessJson.result || assessJson))?.result || assessJson?.result || assessJson;
     // find first score value tolerant
     let score = null;
-    try{ const s = (assessJson?.result?.NBest?.[0]) || (assessJson?.NBest?.[0]) || assessJson; score = s?.PronunciationAssessment?.PronScore ?? s?.PronScore ?? s?.PronunciationScore ?? s?.Score ?? null; }catch(e){}
+    try {
+      const s = (assessJson?.result?.NBest?.[0]) || (assessJson?.NBest?.[0]) || assessJson;
+      const rawScore = s?.PronunciationAssessment?.PronScore ?? s?.PronScore ?? s?.PronunciationScore ?? s?.Score ?? null;
+      if (rawScore !== null && rawScore !== undefined) {
+        const numeric = Number(rawScore);
+        score = Number.isFinite(numeric) ? numeric : null;
+      }
+    } catch(e){}
     const summaryEl = card.querySelector('.rec-summary') || card.querySelector('.right > .rec-summary') || card.lastElementChild;
     if (summaryEl) summaryEl.innerHTML = '';
     card.__assessment = assessJson;
@@ -1802,13 +2344,16 @@ function markCardAssessed(sectionIdx, s3Key, assessJson, savedAt){
       if (canvas){ drawDonutOnCanvas(canvas, Number(score)); }
     }catch(e){}
     // populate word table if available; enable the toggle button when words exist
+    let bestUtterance = null;
     try{
       const root = pickNBestRoot(assessJson) || pickNBestRoot(assessJson?.result) || pickNBestRoot(assessJson?.result?.result) || null;
       let words = [];
       if (root && Array.isArray(root.NBest) && root.NBest[0]){
-        words = root.NBest[0].Words || root.NBest[0].PronunciationAssessment?.Words || [];
+        bestUtterance = root.NBest[0];
+        words = bestUtterance.Words || bestUtterance.PronunciationAssessment?.Words || [];
       } else if (assessJson && Array.isArray(assessJson.NBest) && assessJson.NBest[0]){
-        words = assessJson.NBest[0].Words || assessJson.NBest[0].PronunciationAssessment?.Words || [];
+        bestUtterance = assessJson.NBest[0];
+        words = bestUtterance.Words || bestUtterance.PronunciationAssessment?.Words || [];
       } else if (assessJson && assessJson.Words && Array.isArray(assessJson.Words)){
         words = assessJson.Words;
       }
@@ -1829,10 +2374,43 @@ function markCardAssessed(sectionIdx, s3Key, assessJson, savedAt){
         if (wc){
           // keep hidden by default, but enable toggle button
           wc.style.display = 'none';
-          const tb = card.querySelector('.toggle-words-btn'); if (tb) { tb.disabled = false; tb.textContent = '単語'; }
+          const tb = card.querySelector('.toggle-words-btn'); if (tb) { tb.disabled = false; tb.textContent = '単語評価を見る'; }
         }
       }
     }catch(e){ console.warn('markCardAssessed word table', e); }
+
+    try {
+      const transcript = (() => {
+        if (!bestUtterance) return '';
+        return String(bestUtterance.Display || bestUtterance.Lexical || bestUtterance.ITN || bestUtterance.Word || '').trim();
+      })();
+      const paNode = bestUtterance?.PronunciationAssessment || assessJson?.PronunciationAssessment || {};
+      const accuracyScore = Number(paNode?.AccuracyScore ?? paNode?.AccScore ?? paNode?.Accuracy ?? paNode?.AccuracyScorePercent);
+      const fluencyScore = Number(paNode?.FluencyScore ?? paNode?.FluScore ?? paNode?.Fluency);
+      const completenessScore = Number(paNode?.CompletenessScore ?? paNode?.CompScore ?? paNode?.Completeness);
+      const hasMetrics = [accuracyScore, fluencyScore, completenessScore].some(val => Number.isFinite(val));
+      const metrics = [];
+      if (Number.isFinite(accuracyScore)) metrics.push(`精度 ${Math.round(accuracyScore)}点`);
+      if (Number.isFinite(fluencyScore)) metrics.push(`流暢さ ${Math.round(fluencyScore)}点`);
+      if (Number.isFinite(completenessScore)) metrics.push(`完成度 ${Math.round(completenessScore)}点`);
+      const entryTimestamp = (() => {
+        if (!savedAt) return new Date().toISOString();
+        const parsed = new Date(savedAt);
+        return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
+      })();
+      if (Number.isFinite(score) || hasMetrics) {
+        appendEvaluationHistory(
+          'pronunciation',
+          sectionIdx,
+          transcript || `録音 ${new Date(entryTimestamp).toLocaleString('ja-JP')}`,
+          metrics.length ? metrics.join(' / ') : '単語ごとの判定は録音カードをご確認ください。',
+          Number.isFinite(score) ? normalizeScoreValue(score) : null,
+          entryTimestamp
+        );
+      }
+    } catch (historyErr) {
+      console.warn('append pronunciation history failed', historyErr);
+    }
     if (savedAt) setCardTimestamp(card, savedAt);
     reorderRecordingList(listEl);
     updateEntrySummary(sectionIdx);
@@ -1848,8 +2426,7 @@ function drawDonutOnCanvas(canvas, score){
     // background track
     ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.strokeStyle = '#eee'; ctx.lineWidth = 8; ctx.stroke();
     if (score === null || score === undefined || Number.isNaN(Number(score))){
-      // placeholder center text
-      ctx.font = '12px sans-serif'; ctx.fillStyle = '#666'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('N/A', cx, cy);
+      // keep ring empty until score arrives
       return;
     }
     const p = Math.max(0, Math.min(1, Number(score)/100));
@@ -1874,22 +2451,16 @@ function pickNBestRoot(obj){
   return null;
 }
 
-const logoutBtnEl = document.getElementById('logoutBtn');
-if (logoutBtnEl) {
-  logoutBtnEl.addEventListener('click', (event) => {
-    event.preventDefault();
-    logoutUser();
-  });
-}
-
 updateAuthBar();
 
 (async function bootstrap(){
   try {
     await ensureAuthenticated();
+    await refreshUsageState({ silent: true, skipIfLoading: true });
     currentAuthUserId = authState.userId;
     PAGE_PREFIX = computePagePrefix();
     buildSections();
+    updateAllQuotaDisplays();
   } catch (e) {
     console.error('initialization failed', e);
   }

@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>AI使用状況ダッシュボード</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, sans-serif; background: #f4f6f8; color: #1f2933; padding: 1.5rem; }
+    h1 { margin: 0 0 1rem; font-size: 1.75rem; text-align: center; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+    .toolbar button { padding: 0.5rem 0.9rem; border: none; border-radius: 6px; background: #2563eb; color: #fff; font-weight: 600; cursor: pointer; }
+    .toolbar button:hover { background: #1e4fd9; }
+    .toolbar select, .toolbar input { padding: 0.45rem 0.6rem; border-radius: 6px; border: 1px solid #cbd5e0; font-size: 0.95rem; }
+    .status-bar { padding: 0.75rem 1rem; border-radius: 8px; background: #fff; box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08); margin-bottom: 1rem; display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 6px rgba(15, 23, 42, 0.1); }
+    thead { background: #eef2ff; color: #1f2937; }
+    th, td { padding: 0.75rem 0.9rem; text-align: left; border-bottom: 1px solid #e5e7eb; font-size: 0.95rem; }
+    tbody tr:hover { background: #f9fafb; }
+    .table-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .table-actions button { padding: 0.35rem 0.65rem; border-radius: 6px; border: none; cursor: pointer; font-size: 0.85rem; }
+    .btn-reset { background: #059669; color: #fff; }
+    .btn-reset:hover { background: #047857; }
+    .btn-delete { background: #ef4444; color: #fff; }
+    .btn-delete:hover { background: #dc2626; }
+    .summary-card { background: #fff; border-radius: 10px; padding: 0.9rem 1rem; box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08); min-width: 200px; }
+    .summary-grid { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem; }
+    .summary-card h2 { margin: 0 0 0.35rem; font-size: 1rem; color: #1f2937; }
+    .summary-card p { margin: 0; font-size: 1.2rem; font-weight: 600; color: #2563eb; }
+    .badge { display: inline-block; padding: 0.2rem 0.45rem; border-radius: 9999px; font-size: 0.8rem; font-weight: 600; }
+    .badge-green { background: #d1fae5; color: #047857; }
+    .badge-red { background: #fee2e2; color: #b91c1c; }
+    .badge-gray { background: #e5e7eb; color: #4b5563; }
+    .usage-compact { font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .empty-state { text-align: center; padding: 2rem; font-size: 1rem; color: #6b7280; }
+    .hidden { display: none; }
+    @media (max-width: 768px) {
+      th, td { font-size: 0.85rem; padding: 0.65rem; }
+      .toolbar { flex-direction: column; align-items: stretch; }
+      .status-bar { flex-direction: column; align-items: stretch; }
+      .table-actions { flex-direction: column; align-items: stretch; }
+    }
+  </style>
+</head>
+<body>
+  <h1>AI使用状況ダッシュボード</h1>
+  <div class="toolbar">
+    <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+      <button id="refreshBtn" type="button">最新の状態を取得</button>
+      <label style="display:flex; align-items:center; gap:0.4rem; font-size:0.9rem; color:#374151;">
+        表示切替
+        <select id="filterMode">
+          <option value="all">すべて</option>
+          <option value="limited">上限に近いユーザー</option>
+          <option value="empty">未使用ユーザー</option>
+        </select>
+      </label>
+      <input id="searchInput" type="search" placeholder="ユーザーIDで検索" />
+    </div>
+    <button id="logoutBtn" type="button" style="background:#ef4444;">ログアウト</button>
+  </div>
+
+  <div id="statusBar" class="status-bar hidden"></div>
+
+  <div class="summary-grid" id="summaryGrid"></div>
+
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th style="min-width:140px;">ユーザー</th>
+          <th>リスニング</th>
+          <th>翻訳</th>
+          <th>発音</th>
+          <th>更新日時</th>
+          <th>リセット</th>
+        </tr>
+      </thead>
+      <tbody id="usageTableBody">
+        <tr><td colspan="6" class="empty-state">読み込み中…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+  'use strict';
+
+  const AUTH_STORAGE_KEY = 'ela_auth_session';
+  const PASSWORD_OPTIONAL_PREFIX = 'acg2_';
+  const authState = { token: null, userId: null, expiresAt: 0 };
+  let usageSnapshot = [];
+  let limitsSnapshot = { listening: 0, translation: 0, pronunciation: 0 };
+  let perSectionLimitsSnapshot = { listening: 10, translation: 10, pronunciation: 10 };
+  let sectionCountSnapshot = 1;
+  let storageMode = 's3';
+
+  function sanitizeUserIdForClient(id) {
+    return String(id || '').trim().replace(/[^A-Za-z0-9._-]/g, '_');
+  }
+
+  function setAuthState(token, userId, expiresAt) {
+    authState.token = token;
+    authState.userId = userId;
+    authState.expiresAt = expiresAt;
+    try {
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ token, userId, expiresAt }));
+    } catch (err) {
+      console.warn('auth storage write failed', err);
+    }
+  }
+
+  function clearAuthState() {
+    authState.token = null;
+    authState.userId = null;
+    authState.expiresAt = 0;
+    try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch {}
+  }
+
+  function loadAuthFromStorage() {
+    try {
+      const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return null;
+      if (!parsed.token || !parsed.userId || !parsed.expiresAt) return null;
+      return parsed;
+    } catch (err) {
+      console.warn('auth storage read failed', err);
+      return null;
+    }
+  }
+
+  async function authedFetch(input, init = {}, retry = true) {
+    await ensureAuthenticated();
+    const options = Object.assign({}, init || {});
+    const headers = new Headers(options.headers || {});
+    if (authState.token) headers.set('Authorization', `Bearer ${authState.token}`);
+    options.headers = headers;
+    const response = await fetch(input, options);
+    if (response.status === 401 && retry) {
+      clearAuthState();
+      await ensureAuthenticated();
+      throw new Error('セッションが切断されました。再度操作してください。');
+    }
+    return response;
+  }
+
+  async function ensureAuthenticated() {
+    const now = Date.now();
+    if (authState.token && authState.expiresAt && authState.expiresAt > now + 5000) {
+      return authState;
+    }
+    const stored = loadAuthFromStorage();
+    if (stored && stored.token) {
+      authState.token = stored.token;
+      authState.userId = stored.userId;
+      authState.expiresAt = stored.expiresAt;
+      if (stored.expiresAt && stored.expiresAt > Date.now() + 5000) {
+        const ok = await validateToken();
+        if (ok) return authState;
+      }
+    }
+    clearAuthState();
+    return promptForLogin();
+  }
+
+  async function validateToken() {
+    if (!authState.token) return false;
+    try {
+      const res = await fetch('/api/auth', {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${authState.token}` }
+      });
+      if (!res.ok) return false;
+      const data = await res.json().catch(() => null);
+      if (!data || !data.userId) return false;
+      authState.userId = data.userId;
+      if (data.expiresAt) authState.expiresAt = data.expiresAt;
+      return true;
+    } catch (err) {
+      console.warn('token validation failed', err);
+      return false;
+    }
+  }
+
+  function buildLoginOverlay() {
+    const overlay = document.createElement('div');
+    overlay.id = 'authOverlay';
+    overlay.style = 'position:fixed;inset:0;background:rgba(17,24,39,0.85);display:flex;align-items:center;justify-content:center;z-index:9999;';
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:12px;padding:24px;max-width:360px;width:92%;box-shadow:0 12px 30px rgba(0,0,0,0.25);">
+        <h2 style="margin:0 0 16px;font-size:1.25rem;color:#111827;text-align:center;">管理者ログイン</h2>
+        <form id="authForm" style="display:flex;flex-direction:column;gap:12px;">
+          <label style="display:flex;flex-direction:column;font-size:0.95rem;color:#374151;gap:4px;">
+            ユーザーID
+            <input type="text" name="userId" required style="padding:0.6rem;border:1px solid #d1d5db;border-radius:6px;font-size:1rem;" autocomplete="username" />
+          </label>
+          <label class="auth-password-field" style="display:flex;flex-direction:column;font-size:0.95rem;color:#374151;gap:4px;">
+            パスワード
+            <input type="password" name="password" required style="padding:0.6rem;border:1px solid #d1d5db;border-radius:6px;font-size:1rem;" autocomplete="current-password" />
+            <span class="auth-password-hint" style="display:none;font-size:0.8rem;color:#6b7280;">acg2_で始まるIDはパスワード不要です。</span>
+          </label>
+          <button type="submit" style="margin-top:4px;background:#2563eb;color:#fff;padding:0.65rem;border-radius:6px;font-size:1rem;font-weight:600;border:none;cursor:pointer;">ログイン</button>
+          <div id="authStatus" style="min-height:1.1rem;font-size:0.85rem;color:#b91c1c;text-align:center;"></div>
+        </form>
+      </div>`;
+    return overlay;
+  }
+
+  async function promptForLogin() {
+    return new Promise(resolve => {
+      const overlay = buildLoginOverlay();
+      document.body.appendChild(overlay);
+      const form = overlay.querySelector('#authForm');
+      const statusEl = overlay.querySelector('#authStatus');
+      const passwordField = overlay.querySelector('.auth-password-field');
+      const passwordHint = overlay.querySelector('.auth-password-hint');
+      const passwordInput = overlay.querySelector('input[name="password"]');
+      const userInput = overlay.querySelector('input[name="userId"]');
+
+      form.addEventListener('input', () => {
+        const userId = (userInput.value || '').trim();
+        const passwordOptional = userId.startsWith(PASSWORD_OPTIONAL_PREFIX);
+        passwordField.style.display = passwordOptional ? 'none' : 'flex';
+        passwordInput.required = !passwordOptional;
+        passwordHint.style.display = passwordOptional ? 'block' : 'none';
+      });
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (statusEl) statusEl.textContent = '';
+        const userId = (userInput.value || '').trim();
+        const passwordOptional = userId.startsWith(PASSWORD_OPTIONAL_PREFIX);
+        const passwordValue = passwordOptional ? '' : (passwordInput.value || '');
+        if (!userId) {
+          statusEl.textContent = 'ユーザーIDを入力してください';
+          return;
+        }
+        if (!passwordOptional && !passwordValue) {
+          statusEl.textContent = 'このIDにはパスワードが必要です';
+          return;
+        }
+        try {
+          const res = await fetch('/api/auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, password: passwordValue })
+          });
+          if (!res.ok) {
+            const text = await res.text();
+            let msg = '認証に失敗しました';
+            try {
+              const parsed = JSON.parse(text);
+              if (parsed && parsed.error) msg = parsed.error;
+            } catch {}
+            statusEl.textContent = msg;
+            return;
+          }
+          const data = await res.json();
+          const now = Date.now();
+          const expiresInMs = (data.expiresIn || 3600) * 1000;
+          setAuthState(data.token, data.userId, now + expiresInMs);
+          overlay.remove();
+          resolve(authState);
+        } catch (err) {
+          console.warn('login failed', err);
+          statusEl.textContent = 'サーバーに接続できませんでした';
+        }
+      });
+    });
+  }
+
+  function formatDateTime(ts) {
+    if (!ts) return '-';
+    try {
+      const date = new Date(ts);
+      if (Number.isNaN(date.getTime())) return '-';
+      return date.toLocaleString('ja-JP', {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+      });
+    } catch {
+      return '-';
+    }
+  }
+
+  function formatLimitValue(value) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return '∞';
+    return String(Math.max(0, Math.floor(num)));
+  }
+
+  function resolveGlobalLimitForType(type) {
+    const rawLimit = Number(limitsSnapshot?.[type]);
+    if (Number.isFinite(rawLimit) && rawLimit > 0) {
+      return Math.floor(rawLimit);
+    }
+    const perSection = Number(perSectionLimitsSnapshot?.[type]);
+    if (!Number.isFinite(perSection) || perSection <= 0) {
+      return Infinity;
+    }
+    return Math.max(1, Math.floor(perSection)) * Math.max(1, sectionCountSnapshot);
+  }
+
+  function formatUsageCell(used, remaining, limit) {
+    const usedValue = Number(used) || 0;
+    const remainingValue = Number.isFinite(remaining) ? remaining : '∞';
+    const limitValue = Number.isFinite(limit) ? limit : '∞';
+    const titleParts = [`上限: ${limitValue}`, `残り: ${remainingValue}`];
+    const title = titleParts.join(' | ');
+    return `<span class="usage-compact" title="${title}">${usedValue} / ${limitValue}</span>`;
+  }
+
+  function renderStatusBar() {
+    const statusBar = document.getElementById('statusBar');
+    if (!statusBar) return;
+    const count = usageSnapshot.length;
+    const limitedUsers = usageSnapshot.filter(entry => {
+      const anyLimited = ['listening', 'translation', 'pronunciation'].some(type => {
+        const remaining = Number(entry.remaining?.[type]);
+        return Number.isFinite(remaining) && remaining <= 1;
+      });
+      return anyLimited;
+    }).length;
+    const storageLabel = storageMode === 'memory' ? 'メモリ (再起動で消去されます)' : 'S3 永続化';
+    const sectionInfo = `セクション数: ${sectionCountSnapshot}`;
+    const perSectionText = `1セクション上限: 聞${formatLimitValue(perSectionLimitsSnapshot.listening)} / 訳${formatLimitValue(perSectionLimitsSnapshot.translation)} / 発${formatLimitValue(perSectionLimitsSnapshot.pronunciation)}`;
+    statusBar.innerHTML = `
+      <div>現在のユーザー数: <strong>${count}</strong></div>
+      <div>警戒レベルのユーザー: <strong>${limitedUsers}</strong></div>
+      <div>保存モード: <span class="badge ${storageMode === 'memory' ? 'badge-red' : 'badge-green'}">${storageLabel}</span></div>
+      <div>${sectionInfo}</div>
+      <div>${perSectionText}</div>
+    `;
+    statusBar.classList.remove('hidden');
+  }
+
+  function renderSummaryCards() {
+    const grid = document.getElementById('summaryGrid');
+    if (!grid) return;
+    const totals = usageSnapshot.reduce((acc, entry) => {
+      acc.listening += Number(entry.listeningUsed) || 0;
+      acc.translation += Number(entry.translationUsed) || 0;
+      acc.pronunciation += Number(entry.pronunciationUsed) || 0;
+      return acc;
+    }, { listening: 0, translation: 0, pronunciation: 0 });
+
+    const cards = [
+      { key: 'listening', label: 'リスニング合計', value: totals.listening, limit: resolveGlobalLimitForType('listening') },
+      { key: 'translation', label: '翻訳合計', value: totals.translation, limit: resolveGlobalLimitForType('translation') },
+      { key: 'pronunciation', label: '発音合計', value: totals.pronunciation, limit: resolveGlobalLimitForType('pronunciation') }
+    ];
+
+    grid.innerHTML = cards.map(card => {
+      const limitValue = Number.isFinite(card.limit) ? Math.max(0, Math.floor(card.limit)) : '∞';
+      const remaining = Number.isFinite(card.limit) ? Math.max(0, limitValue - (Number(card.value) || 0)) : '∞';
+      return `
+        <div class="summary-card">
+          <h2>${card.label}</h2>
+          <p>${card.value} / ${limitValue}</p>
+          <div style="font-size:0.85rem;color:#4b5563;">残り: ${remaining}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function applyFilters(entries) {
+    const filterMode = document.getElementById('filterMode').value;
+    const searchValue = (document.getElementById('searchInput').value || '').trim().toLowerCase();
+    return entries.filter(entry => {
+      if (searchValue) {
+        const userId = String(entry.id || entry.safeId || '').toLowerCase();
+        if (!userId.includes(searchValue)) return false;
+      }
+      if (filterMode === 'limited') {
+        return ['listening', 'translation', 'pronunciation'].some(type => {
+          const remaining = Number(entry.remaining?.[type]);
+          return Number.isFinite(remaining) && remaining <= 1;
+        });
+      }
+      if (filterMode === 'empty') {
+        return (Number(entry.listeningUsed) || 0) === 0 &&
+               (Number(entry.translationUsed) || 0) === 0 &&
+               (Number(entry.pronunciationUsed) || 0) === 0;
+      }
+      return true;
+    });
+  }
+
+  function renderTable() {
+    const tbody = document.getElementById('usageTableBody');
+    if (!tbody) return;
+    const filtered = applyFilters(usageSnapshot);
+    if (filtered.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6" class="empty-state">該当するユーザーが見つかりません</td></tr>`;
+      return;
+    }
+    const rows = filtered.map(entry => {
+      const listeningCell = formatUsageCell(entry.listeningUsed, entry.remaining?.listening, resolveGlobalLimitForType('listening'));
+      const translationCell = formatUsageCell(entry.translationUsed, entry.remaining?.translation, resolveGlobalLimitForType('translation'));
+      const pronunciationCell = formatUsageCell(entry.pronunciationUsed, entry.remaining?.pronunciation, resolveGlobalLimitForType('pronunciation'));
+      const updated = formatDateTime(entry.updatedAt || entry.resetAt);
+      const userIdDisplay = entry.id || entry.safeId;
+      return `
+        <tr data-user="${sanitizeUserIdForClient(userIdDisplay)}">
+          <td>
+            <div style="font-weight:600;">${userIdDisplay}</div>
+            <div style="font-size:0.8rem;color:#6b7280;">safeId: ${entry.safeId || '-'}</div>
+          </td>
+          <td>${listeningCell}</td>
+          <td>${translationCell}</td>
+          <td>${pronunciationCell}</td>
+          <td>${updated}</td>
+          <td>
+            <div class="table-actions">
+              <button class="btn-reset" data-action="reset" data-user="${entry.id || entry.safeId}">リセット</button>
+              <button class="btn-delete" data-action="delete" data-user="${entry.id || entry.safeId}">削除</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+    tbody.innerHTML = rows;
+  }
+
+  async function fetchUsageData() {
+    const tbody = document.getElementById('usageTableBody');
+    if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="empty-state">読み込み中…</td></tr>`;
+    try {
+      const res = await authedFetch('/api/usage-admin', { method: 'GET' });
+      if (!res.ok) {
+        throw new Error(`failed with status ${res.status}`);
+      }
+      const data = await res.json();
+      usageSnapshot = Array.isArray(data.items) ? data.items : [];
+      limitsSnapshot = Object.assign({}, limitsSnapshot, data.limits || {});
+      perSectionLimitsSnapshot = Object.assign({}, perSectionLimitsSnapshot, data.perSectionLimits || {});
+      if (data.sectionCount !== undefined) {
+        const parsedCount = Number(data.sectionCount);
+        if (Number.isFinite(parsedCount) && parsedCount > 0) {
+          sectionCountSnapshot = Math.max(1, Math.floor(parsedCount));
+        }
+      }
+      storageMode = data.storage || 's3';
+      renderStatusBar();
+      renderSummaryCards();
+      renderTable();
+    } catch (err) {
+      console.warn('fetchUsageData failed', err);
+      if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="empty-state">読み込みに失敗しました</td></tr>`;
+    }
+  }
+
+  async function handleAction(action, userId) {
+    if (!userId) return;
+    const confirmed = action === 'reset'
+      ? confirm(`ユーザー「${userId}」の使用回数をリセットしますか？`)
+      : confirm(`ユーザー「${userId}」の記録を削除しますか？`);
+    if (!confirmed) return;
+    try {
+      const res = await authedFetch('/api/usage-admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, userId })
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || 'API error');
+      }
+      await fetchUsageData();
+    } catch (err) {
+      alert(`操作に失敗しました: ${err.message}`);
+    }
+  }
+
+  function setupEventHandlers() {
+    const refreshBtn = document.getElementById('refreshBtn');
+    if (refreshBtn) refreshBtn.addEventListener('click', () => fetchUsageData());
+
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) logoutBtn.addEventListener('click', () => {
+      clearAuthState();
+      window.location.reload();
+    });
+
+    const filterMode = document.getElementById('filterMode');
+    const searchInput = document.getElementById('searchInput');
+    if (filterMode) filterMode.addEventListener('change', renderTable);
+    if (searchInput) searchInput.addEventListener('input', () => {
+      renderTable();
+    });
+
+    const tbody = document.getElementById('usageTableBody');
+    if (tbody) {
+      tbody.addEventListener('click', (event) => {
+        const button = event.target.closest('button[data-action]');
+        if (!button) return;
+        const action = button.dataset.action;
+        const userId = button.dataset.user;
+        if (action === 'reset' || action === 'delete') {
+          handleAction(action, userId);
+        }
+      });
+    }
+  }
+
+  (async function bootstrap() {
+    try {
+      setupEventHandlers();
+      await ensureAuthenticated();
+      await fetchUsageData();
+    } catch (err) {
+      console.error('初期化に失敗しました', err);
+      alert('初期化に失敗しました: ' + err.message);
+    }
+  })();
+  </script>
+</body>
+</html>
