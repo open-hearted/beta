@@ -10,6 +10,8 @@
     *, *::before, *::after { box-sizing: border-box; }
     html, body { overflow-x: hidden; }
   body { font-family: sans-serif; padding: 1rem; background: #f0f2f5; max-width: none; width: 100%; margin: 0; line-height: 1.6; }
+  .logout-button { position: fixed; top: 10px; right: 10px; padding: 0.25rem 0.75rem; background: rgba(107,114,128,0.9); color: #fff; border: none; border-radius: 999px; font-size: 0.8rem; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.12); z-index: 1100; transition: background 0.2s ease; }
+  .logout-button:hover { background: rgba(75,85,99,0.95); }
     .card { background: transparent; border: none; padding: 0; margin-bottom: 2rem; box-shadow: none; }
     .entry { border: 1px solid #ddd; border-radius: 12px; background: #fff; overflow: hidden; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05); }
   .entry summary { position: relative; list-style: none; display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; padding: 1rem 1.25rem; background: #f7f8fc; cursor: pointer; font-weight: 600; color: #1f2937; }
@@ -2495,4 +2497,6 @@ if (logoutBtn) {
 </footer>
 
 </body>
+
+<button id="logoutBtn" class="logout-button" type="button" aria-label="ログアウト" style="display:none;">ログアウト</button>
 </html>
