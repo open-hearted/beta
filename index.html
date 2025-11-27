@@ -2485,7 +2485,6 @@ updateAuthBar();
 const logoutBtn = document.getElementById('logoutBtn');
 if (logoutBtn) {
   logoutBtn.addEventListener('click', async () => {
-    if (!window.confirm('ログアウトしてサインイン画面に戻りますか？記録は保持されます。')) return;
     await logoutUser();
   });
 }
@@ -2497,6 +2496,4 @@ if (logoutBtn) {
 </footer>
 
 </body>
-
-<button id="logoutBtn" class="logout-button" type="button" aria-label="ログアウト" style="display:none;">ログアウト</button>
 </html>
