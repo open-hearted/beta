@@ -242,7 +242,7 @@ async function logoutUser(options = {}) {
     return;
   }
   try {
-    await promptForLogin();
+    await promptForLogin({ autoReload: false });
     PAGE_PREFIX = computePagePrefix();
     currentAuthUserId = authState.userId;
     window.location.reload();
@@ -1032,7 +1032,7 @@ function buildLoginOverlay() {
   return overlay;
 }
 
-async function promptForLogin() {
+async function promptForLogin(options = {}) {
   return new Promise(resolve => {
     const overlay = buildLoginOverlay();
     document.body.appendChild(overlay);
@@ -1098,6 +1098,11 @@ async function promptForLogin() {
         setAuthState(data.token, data.userId, now + expiresInMs);
         overlay.remove();
         resolve(authState);
+        if (options.autoReload) {
+          setTimeout(() => {
+            try { window.location.reload(); } catch (err) { console.warn('auto reload after login failed', err); }
+          }, 0);
+        }
       } catch (e) {
         console.warn('login request failed', e);
         statusEl.textContent = 'サーバーに接続できませんでした';
@@ -1128,7 +1133,7 @@ async function ensureAuthenticated() {
     }
   }
   clearAuthState();
-  return promptForLogin();
+  return promptForLogin({ autoReload: true });
 }
 
 async function authedFetch(input, init = {}, retry = true) {
