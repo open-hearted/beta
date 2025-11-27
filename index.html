@@ -95,6 +95,8 @@
 </head>
 <body>
 
+<button id="logoutBtn" class="logout-button" type="button" aria-label="ログアウト" style="display:none;">ログアウト</button>
+
 <h1>英語の筋トレ</h1>
 <div id="sentence-sections"></div>
 
@@ -162,7 +164,7 @@ function loadAuthFromStorage() {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return null;
-    if (!parsed.token || !parsed.userId || !parsed.expiresAt) return null;
+    if (!parsed.userId || !parsed.expiresAt) return null;
     return parsed;
   } catch (e) {
     console.warn('load auth storage failed', e);
@@ -220,23 +222,30 @@ function purgeUserScopedData(userId) {
   }
 }
 
-function updateAuthBar() {}
+function updateAuthBar() {
+  const btn = document.getElementById('logoutBtn');
+  if (!btn) return;
+  const activeUser = authState.userId;
+  btn.style.display = activeUser ? 'inline-flex' : 'none';
+  btn.title = activeUser ? `${activeUser} で利用中` : 'ログインして利用開始';
+}
 
-function logoutUser(options = {}) {
-  const currentUser = authState.userId;
-  if (currentUser) {
-    purgeUserScopedData(currentUser);
-  }
+async function logoutUser(options = {}) {
   clearAuthState();
   PAGE_PREFIX = '';
   currentAuthUserId = null;
-  if (!options || options.silent !== true) {
-    try {
-      window.location.reload();
-    } catch (e) {
-      console.warn('reload failed after logout', e);
-      promptForLogin();
-    }
+  updateAuthBar();
+  if (options?.skipPrompt) {
+    window.location.reload();
+    return;
+  }
+  try {
+    await promptForLogin();
+    PAGE_PREFIX = computePagePrefix();
+    currentAuthUserId = authState.userId;
+    window.location.reload();
+  } catch (e) {
+    console.warn('re-login after logout was cancelled', e);
   }
 }
 
@@ -1098,17 +1107,22 @@ async function promptForLogin() {
 
 async function ensureAuthenticated() {
   const now = Date.now();
-  if (authState.token && authState.expiresAt && authState.expiresAt > now + 5000) {
+  if (authState.userId && authState.expiresAt && authState.expiresAt > now + 5000) {
     return authState;
   }
   const stored = loadAuthFromStorage();
-  if (stored && stored.token) {
-    authState.token = stored.token;
+  if (stored && stored.userId) {
+    authState.token = stored.token || null;
     authState.userId = stored.userId;
     authState.expiresAt = stored.expiresAt;
     if (stored.expiresAt && stored.expiresAt > Date.now() + 5000) {
-      const ok = await validateToken();
-      if (ok) return authState;
+      if (authState.token) {
+        const ok = await validateToken();
+        if (ok) return authState;
+      } else {
+        updateAuthBar();
+        return authState;
+      }
     }
   }
   clearAuthState();
@@ -2465,6 +2479,14 @@ updateAuthBar();
     console.error('initialization failed', e);
   }
 })();
+
+const logoutBtn = document.getElementById('logoutBtn');
+if (logoutBtn) {
+  logoutBtn.addEventListener('click', async () => {
+    if (!window.confirm('ログアウトしてサインイン画面に戻りますか？記録は保持されます。')) return;
+    await logoutUser();
+  });
+}
 
 </script>
 
