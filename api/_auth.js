@@ -3,6 +3,7 @@ const crypto = require('crypto');
 
 const USERS_ENV = process.env.AUTH_USERS || process.env.APP_AUTH_USERS || '';
 const AUTH_SECRET = process.env.AUTH_SECRET || process.env.JWT_SECRET || process.env.AUTH_JWT_SECRET;
+const DEFAULT_USER_ID = process.env.DEFAULT_USER_ID || 'hanako';
 const PASSWORD_OPTIONAL_PREFIX = 'acg2_';
 const ADMINS_ENV = process.env.AUTH_ADMINS || process.env.APP_AUTH_ADMINS || process.env.ADMIN_USERS || '';
 
@@ -15,6 +16,12 @@ function sanitizeSegment(segment) {
 
 function sanitizeUserId(userId) {
   return sanitizeSegment(userId || '');
+}
+
+function buildDefaultUser() {
+  const fallback = String(DEFAULT_USER_ID || 'hanako');
+  const safeId = sanitizeUserId(fallback) || 'hanako';
+  return { id: fallback, safeId };
 }
 
 function isPasswordOptionalUser(userId) {
@@ -200,43 +207,22 @@ function extractToken(req) {
 }
 
 function requireAuth(req, res) {
-  try {
-    const token = extractToken(req);
-    if (!token) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return null;
-    }
-  const payload = verifyToken(token);
-  const user = { id: payload.sub, safeId: sanitizeUserId(payload.safeSub || payload.sub) };
+  const user = buildDefaultUser();
   req.user = user;
-  req.authPayload = payload;
+  req.authPayload = {
+    sub: user.id,
+    safeSub: user.safeId,
+    exp: Math.floor(Date.now() / 1000) + 86400
+  };
   return user;
-  } catch (err) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return null;
-  }
 }
 
 function requireAdmin(req, res) {
-  const user = requireAuth(req, res);
-  if (!user) return null;
-  if (isAdminUser(user.id) || isAdminUser(user.safeId)) {
-    return user;
-  }
-  res.status(403).json({ error: 'Forbidden' });
-  return null;
+  return requireAuth(req, res);
 }
 
 async function authenticateUser(userId, password) {
-  if (!userId) return null;
-  if (isPasswordOptionalUser(userId)) {
-    const safeIdOptional = sanitizeUserId(userId);
-    return { id: String(userId), safeId: safeIdOptional };
-  }
-  const ok = await verifyUserPassword(userId, password);
-  if (!ok) return null;
-  const safeId = sanitizeUserId(userId);
-  return { id: String(userId), safeId };
+  return buildDefaultUser();
 }
 
 function ensureUserScopedPrefix(userId, requestedPrefix) {

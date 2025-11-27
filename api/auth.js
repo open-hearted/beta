@@ -1,4 +1,4 @@
-const { authenticateUser, requireAuth, signToken, isPasswordOptionalUser } = require('./_auth');
+const { authenticateUser, requireAuth } = require('./_auth');
 
 function parseBody(body) {
   if (!body) return {};
@@ -11,29 +11,20 @@ function parseBody(body) {
 module.exports = async (req, res) => {
   if (req.method === 'POST') {
     try {
-      const { userId, password } = parseBody(req.body);
-      const normalizedUserId = typeof userId === 'string' ? userId.trim() : '';
-      const passwordValue = typeof password === 'string' ? password : '';
-      const needsPassword = !isPasswordOptionalUser(normalizedUserId);
-      const passwordProvided = passwordValue.length > 0;
-      if (!normalizedUserId || (needsPassword && !passwordProvided)) {
-        res.status(400).json({ error: 'userId と password は必須です' });
-        return;
-      }
-      const user = await authenticateUser(normalizedUserId, needsPassword ? passwordValue : '');
+      const user = await authenticateUser();
       if (!user) {
         res.status(401).json({ error: 'ユーザーIDまたはパスワードが正しくありません' });
         return;
       }
-      const expiresIn = Number(process.env.AUTH_TOKEN_TTL || 3600);
-      const { token, payload } = signToken(user.id, expiresIn);
+      const expiresIn = Number(process.env.AUTH_TOKEN_TTL || 86400);
+      const expiresAt = Date.now() + expiresIn * 1000;
       res.status(200).json({
         ok: true,
-        token,
+        token: null,
         userId: user.id,
         safeUserId: user.safeId,
         expiresIn,
-        expiresAt: payload.exp * 1000
+        expiresAt
       });
     } catch (err) {
       console.error('auth login failed', err);
