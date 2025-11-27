@@ -10,8 +10,6 @@
     *, *::before, *::after { box-sizing: border-box; }
     html, body { overflow-x: hidden; }
   body { font-family: sans-serif; padding: 1rem; background: #f0f2f5; max-width: none; width: 100%; margin: 0; line-height: 1.6; }
-  .logout-button { position: fixed; top: 12px; right: 12px; padding: 0.35rem 0.8rem; background: rgba(17,24,39,0.85); color: #fff; border: none; border-radius: 999px; font-size: 0.85rem; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.15); z-index: 1000; }
-  .logout-button:hover { background: rgba(17,24,39,0.95); }
     .card { background: transparent; border: none; padding: 0; margin-bottom: 2rem; box-shadow: none; }
     .entry { border: 1px solid #ddd; border-radius: 12px; background: #fff; overflow: hidden; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05); }
   .entry summary { position: relative; list-style: none; display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; padding: 1rem 1.25rem; background: #f7f8fc; cursor: pointer; font-weight: 600; color: #1f2937; }
@@ -97,8 +95,6 @@
 </head>
 <body>
 
-<button id="logoutBtn" class="logout-button" type="button" aria-label="ログアウト">ログアウト</button>
-
 <h1>英語の筋トレ</h1>
 <div id="sentence-sections"></div>
 
@@ -134,7 +130,6 @@ const authState = { token: null, userId: null, expiresAt: 0 };
 let PAGE_PREFIX = '';
 let currentAuthUserId = null;
 const PASSWORD_OPTIONAL_PREFIX = 'acg2_';
-const FIXED_USER_ID = 'hanako';
 
 function sanitizeUserIdForClient(id) {
   return String(id || '').trim().replace(/[^A-Za-z0-9._-]/g, '_');
@@ -225,29 +220,23 @@ function purgeUserScopedData(userId) {
   }
 }
 
-function updateAuthBar() {
-  const btn = document.getElementById('logoutBtn');
-  if (!btn) return;
-  const activeUser = authState.userId || FIXED_USER_ID;
-  btn.title = `${activeUser} で利用中`;
-}
+function updateAuthBar() {}
 
 function logoutUser(options = {}) {
   const currentUser = authState.userId;
-  if (currentUser) purgeUserScopedData(currentUser);
+  if (currentUser) {
+    purgeUserScopedData(currentUser);
+  }
   clearAuthState();
-  authState.userId = FIXED_USER_ID;
-  authState.expiresAt = Date.now() + 86400000;
-  PAGE_PREFIX = computePagePrefix();
-  currentAuthUserId = FIXED_USER_ID;
-  if (options.reload === true) {
+  PAGE_PREFIX = '';
+  currentAuthUserId = null;
+  if (!options || options.silent !== true) {
     try {
       window.location.reload();
     } catch (e) {
       console.warn('reload failed after logout', e);
+      promptForLogin();
     }
-  } else {
-    updateAuthBar();
   }
 }
 
@@ -980,7 +969,7 @@ function setPronunciationLimitMessage(statusEl) {
 }
 
 function computePagePrefix() {
-  const safeUser = sanitizeUserIdForClient(authState.userId || FIXED_USER_ID);
+  const safeUser = sanitizeUserIdForClient(authState.userId || 'anon');
   let p = location.host + location.pathname;
   p = p.replace(/[^A-Za-z0-9._\-/]/g, '_');
   if (!p.endsWith('/')) p += '/';
@@ -988,11 +977,23 @@ function computePagePrefix() {
 }
 
 async function validateToken() {
-  authState.userId = FIXED_USER_ID;
-  authState.token = null;
-  authState.expiresAt = Date.now() + 86400000;
+  if (!authState.token) return false;
+  try {
+    const res = await fetch('/api/auth', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${authState.token}` }
+    });
+    if (!res.ok) return false;
+    const data = await res.json().catch(() => null);
+    if (!data || !data.userId) return false;
+    authState.userId = data.userId;
+    if (data.expiresAt) authState.expiresAt = data.expiresAt;
   updateAuthBar();
-  return true;
+    return true;
+  } catch (e) {
+    console.warn('token validation failed', e);
+    return false;
+  }
 }
 
 function buildLoginOverlay() {
@@ -1096,24 +1097,45 @@ async function promptForLogin() {
 }
 
 async function ensureAuthenticated() {
-  if (authState.userId === FIXED_USER_ID) return authState;
-  authState.userId = FIXED_USER_ID;
-  authState.token = null;
-  authState.expiresAt = Date.now() + 86400000;
-  updateAuthBar();
-  return authState;
+  const now = Date.now();
+  if (authState.token && authState.expiresAt && authState.expiresAt > now + 5000) {
+    return authState;
+  }
+  const stored = loadAuthFromStorage();
+  if (stored && stored.token) {
+    authState.token = stored.token;
+    authState.userId = stored.userId;
+    authState.expiresAt = stored.expiresAt;
+    if (stored.expiresAt && stored.expiresAt > Date.now() + 5000) {
+      const ok = await validateToken();
+      if (ok) return authState;
+    }
+  }
+  clearAuthState();
+  return promptForLogin();
 }
 
-async function authedFetch(input, init = {}) {
+async function authedFetch(input, init = {}, retry = true) {
   await ensureAuthenticated();
   const options = Object.assign({}, init || {});
-  options.headers = new Headers(options.headers || {});
-  return fetch(input, options);
+  const headers = new Headers(options.headers || {});
+  if (authState.token) headers.set('Authorization', `Bearer ${authState.token}`);
+  options.headers = headers;
+  const response = await fetch(input, options);
+  if (response.status === 401 && retry) {
+    clearAuthState();
+    await ensureAuthenticated();
+    PAGE_PREFIX = computePagePrefix();
+    currentAuthUserId = authState.userId;
+    window.location.reload();
+    throw new Error('セッションが切れたためページを再読み込みします');
+  }
+  return response;
 }
 
 function requireAuthGuard() {
-  if (authState.userId !== FIXED_USER_ID) {
-    authState.userId = FIXED_USER_ID;
+  if (!authState.userId) {
+    throw new Error('認証情報が見つかりません');
   }
 }
 
@@ -2443,14 +2465,6 @@ updateAuthBar();
     console.error('initialization failed', e);
   }
 })();
-
-const logoutBtn = document.getElementById('logoutBtn');
-if (logoutBtn) {
-  logoutBtn.addEventListener('click', () => {
-    if (!window.confirm('ログアウトしてデータをクリアしますか？')) return;
-    logoutUser({ reload: true });
-  });
-}
 
 </script>
 
