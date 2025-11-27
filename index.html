@@ -130,7 +130,6 @@ const authState = { token: null, userId: null, expiresAt: 0 };
 let PAGE_PREFIX = '';
 let currentAuthUserId = null;
 const PASSWORD_OPTIONAL_PREFIX = 'acg2_';
-const FIXED_USER_ID = 'hanako';
 
 function sanitizeUserIdForClient(id) {
   return String(id || '').trim().replace(/[^A-Za-z0-9._-]/g, '_');
@@ -225,13 +224,20 @@ function updateAuthBar() {}
 
 function logoutUser(options = {}) {
   const currentUser = authState.userId;
-  if (currentUser) purgeUserScopedData(currentUser);
+  if (currentUser) {
+    purgeUserScopedData(currentUser);
+  }
   clearAuthState();
-  authState.userId = FIXED_USER_ID;
-  authState.expiresAt = Date.now() + 86400000; // keep UI logic happy
-  PAGE_PREFIX = computePagePrefix();
-  currentAuthUserId = FIXED_USER_ID;
-  if (!options || options.silent !== true) updateAuthBar();
+  PAGE_PREFIX = '';
+  currentAuthUserId = null;
+  if (!options || options.silent !== true) {
+    try {
+      window.location.reload();
+    } catch (e) {
+      console.warn('reload failed after logout', e);
+      promptForLogin();
+    }
+  }
 }
 
 const EVAL_HISTORY_LIMIT = 20;
@@ -971,10 +977,23 @@ function computePagePrefix() {
 }
 
 async function validateToken() {
-  authState.userId = FIXED_USER_ID;
-  authState.expiresAt = Date.now() + 86400000;
+  if (!authState.token) return false;
+  try {
+    const res = await fetch('/api/auth', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${authState.token}` }
+    });
+    if (!res.ok) return false;
+    const data = await res.json().catch(() => null);
+    if (!data || !data.userId) return false;
+    authState.userId = data.userId;
+    if (data.expiresAt) authState.expiresAt = data.expiresAt;
   updateAuthBar();
-  return true;
+    return true;
+  } catch (e) {
+    console.warn('token validation failed', e);
+    return false;
+  }
 }
 
 function buildLoginOverlay() {
@@ -1078,24 +1097,45 @@ async function promptForLogin() {
 }
 
 async function ensureAuthenticated() {
-  if (authState.userId === FIXED_USER_ID) return authState;
-  authState.userId = FIXED_USER_ID;
-  authState.token = null;
-  authState.expiresAt = Date.now() + 86400000;
-  updateAuthBar();
-  return authState;
+  const now = Date.now();
+  if (authState.token && authState.expiresAt && authState.expiresAt > now + 5000) {
+    return authState;
+  }
+  const stored = loadAuthFromStorage();
+  if (stored && stored.token) {
+    authState.token = stored.token;
+    authState.userId = stored.userId;
+    authState.expiresAt = stored.expiresAt;
+    if (stored.expiresAt && stored.expiresAt > Date.now() + 5000) {
+      const ok = await validateToken();
+      if (ok) return authState;
+    }
+  }
+  clearAuthState();
+  return promptForLogin();
 }
 
-async function authedFetch(input, init = {}) {
+async function authedFetch(input, init = {}, retry = true) {
   await ensureAuthenticated();
   const options = Object.assign({}, init || {});
-  options.headers = new Headers(options.headers || {});
-  return fetch(input, options);
+  const headers = new Headers(options.headers || {});
+  if (authState.token) headers.set('Authorization', `Bearer ${authState.token}`);
+  options.headers = headers;
+  const response = await fetch(input, options);
+  if (response.status === 401 && retry) {
+    clearAuthState();
+    await ensureAuthenticated();
+    PAGE_PREFIX = computePagePrefix();
+    currentAuthUserId = authState.userId;
+    window.location.reload();
+    throw new Error('セッションが切れたためページを再読み込みします');
+  }
+  return response;
 }
 
 function requireAuthGuard() {
-  if (authState.userId !== FIXED_USER_ID) {
-    authState.userId = FIXED_USER_ID;
+  if (!authState.userId) {
+    throw new Error('認証情報が見つかりません');
   }
 }
 
