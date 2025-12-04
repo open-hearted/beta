@@ -40,6 +40,32 @@
   .progress-card.translation .progress-bar-fill { background: linear-gradient(135deg, #facc15, #f97316); }
   .progress-card.pronunciation .progress-bar-fill { background: linear-gradient(135deg, #f472b6, #db2777); }
   .progress-meta { font-size: 0.8rem; color: #6b7280; }
+  .calendar-panel { max-width: 960px; margin: 0 auto 1.5rem auto; padding: 1.25rem; background: #fff; border-radius: 16px; border: 1px solid #e5e7eb; box-shadow: 0 15px 35px rgba(15, 23, 42, 0.08); display: flex; flex-direction: column; gap: 1rem; }
+  .calendar-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; }
+  .calendar-title { display: flex; align-items: center; gap: 0.5rem; font-size: 1.1rem; font-weight: 600; color: #0f172a; }
+  .calendar-nav { background: #e2e8f0; border: none; border-radius: 999px; width: 32px; height: 32px; display: grid; place-items: center; font-size: 1rem; cursor: pointer; color: #475569; transition: background 0.2s ease; }
+  .calendar-nav:hover { background: #cbd5f5; }
+  .calendar-subtitle { margin: 0; font-size: 0.9rem; color: #64748b; }
+  .calendar-legend { display: flex; flex-wrap: wrap; gap: 0.75rem; font-size: 0.85rem; color: #475569; }
+  .legend-dot { display: inline-flex; width: 12px; height: 12px; border-radius: 3px; margin-right: 0.35rem; }
+  .dot-listening { background: #34d399; }
+  .dot-translation { background: #f59e0b; }
+  .dot-pronunciation { background: #ec4899; }
+  .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.4rem; }
+  .calendar-weekday { text-transform: uppercase; font-size: 0.75rem; color: #94a3b8; text-align: center; letter-spacing: 0.08em; }
+  .calendar-cell { min-height: 82px; border-radius: 12px; padding: 0.5rem; background: #f8fafc; position: relative; display: flex; flex-direction: column; gap: 0.4rem; border: 1px solid transparent; transition: transform 0.15s ease, border-color 0.15s ease; }
+  .calendar-cell:hover { transform: translateY(-2px); border-color: #cbd5f5; }
+  .calendar-cell.outside { opacity: 0.35; }
+  .calendar-cell.level-0 { background: #f8fafc; }
+  .calendar-cell.level-1 { background: #dbeafe; }
+  .calendar-cell.level-2 { background: #bfdbfe; }
+  .calendar-cell.level-3 { background: #93c5fd; }
+  .calendar-day { font-weight: 600; color: #1e293b; font-size: 0.95rem; }
+  .calendar-dots { margin-top: auto; display: flex; gap: 0.2rem; }
+  .calendar-dot { flex: 1 1 auto; height: 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.7); opacity: 0.35; }
+  .calendar-dot.listening.active { background: #059669; opacity: 1; }
+  .calendar-dot.translation.active { background: #d97706; opacity: 1; }
+  .calendar-dot.pronunciation.active { background: #be185d; opacity: 1; }
     .entry-body { padding: 1.25rem; background: white; }
     h1 { font-size: 2rem; color: #333; margin-bottom: 1rem; text-align: center; }
     h2 { font-size: 1.3rem; color: #555; margin-bottom: 1rem; border-bottom: 2px solid #eee; padding-bottom: 0.5rem; }
@@ -154,6 +180,25 @@
     <div class="progress-meta">各セクションで1回以上発音評価を実施</div>
   </div>
 </div>
+<div id="calendarTracker" class="calendar-panel" aria-live="polite">
+  <div class="calendar-header">
+    <div>
+      <div class="calendar-title">
+        <button type="button" id="calendarPrev" class="calendar-nav" aria-label="前の月へ">‹</button>
+        <span id="calendarMonthLabel">----</span>
+        <button type="button" id="calendarNext" class="calendar-nav" aria-label="次の月へ">›</button>
+      </div>
+      <p class="calendar-subtitle">各日で実施したトレーニング内容が色で表示されます。</p>
+    </div>
+    <div class="calendar-legend">
+      <span><span class="legend-dot dot-listening"></span>聞き取り</span>
+      <span><span class="legend-dot dot-translation"></span>和訳</span>
+      <span><span class="legend-dot dot-pronunciation"></span>発音</span>
+    </div>
+  </div>
+  <div class="calendar-grid" id="calendarWeekdays"></div>
+  <div class="calendar-grid" id="calendarGrid" role="grid" aria-label="進捗カレンダー"></div>
+</div>
 <div id="sentence-sections"></div>
 
 <script>
@@ -188,7 +233,12 @@ const sectionProgress = Array.from({ length: totalSections }, () => ({
   translation: false,
   pronunciation: false
 }));
+const calendarStats = Object.create(null);
+const calendarMonthAnchor = new Date();
+calendarMonthAnchor.setDate(1);
+const CALENDAR_WEEKDAYS = ['月', '火', '水', '木', '金', '土', '日'];
 updateGlobalProgress();
+renderCalendarHeatmap();
 
 const AUTH_STORAGE_KEY = 'ela_auth_session';
 const CONSENT_STORAGE_KEY = 'ela_consent_ack_v1';
@@ -698,6 +748,136 @@ function saveEvaluationHistory(type, idx, history) {
   }
 }
 
+function resetCalendarStats() {
+  Object.keys(calendarStats).forEach(key => delete calendarStats[key]);
+}
+
+function formatDateKey(raw) {
+  if (!raw) return '';
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return '';
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function expressDateJa(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+}
+
+function formatCalendarMonthLabel(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+  return `${date.getFullYear()}年${date.getMonth() + 1}月`;
+}
+
+function ensureCalendarEntry(dateKey) {
+  if (!calendarStats[dateKey]) {
+    calendarStats[dateKey] = {
+      listening: false,
+      translation: false,
+      pronunciation: false
+    };
+  }
+  return calendarStats[dateKey];
+}
+
+function recordCalendarEvent(type, timestamp) {
+  const key = formatDateKey(timestamp || Date.now());
+  if (!key) return;
+  const entry = ensureCalendarEntry(key);
+  if (type === 'translation' || type === 'listening' || type === 'pronunciation') {
+    entry[type] = true;
+  }
+}
+
+function rebuildCalendarStats() {
+  resetCalendarStats();
+  for (let idx = 0; idx < totalSections; idx += 1) {
+    ['listening', 'translation', 'pronunciation'].forEach(type => {
+      const history = loadEvaluationHistory(type, idx);
+      history.forEach(entry => recordCalendarEvent(type, entry?.createdAt));
+    });
+  }
+  renderCalendarHeatmap();
+}
+
+function buildCalendarMatrix(anchorDate) {
+  const anchor = new Date(anchorDate);
+  if (Number.isNaN(anchor.getTime())) {
+    return [];
+  }
+  anchor.setDate(1);
+  const offset = (anchor.getDay() + 6) % 7; // Monday-start grid
+  const gridStart = new Date(anchor);
+  gridStart.setDate(anchor.getDate() - offset);
+  const cells = [];
+  for (let i = 0; i < 42; i += 1) {
+    const date = new Date(gridStart);
+    date.setDate(gridStart.getDate() + i);
+    cells.push({
+      date,
+      isCurrentMonth: date.getMonth() === anchor.getMonth()
+    });
+  }
+  return cells;
+}
+
+function renderCalendarWeekdays() {
+  const row = document.getElementById('calendarWeekdays');
+  if (!row || row.dataset.rendered === 'true') return;
+  row.innerHTML = '';
+  CALENDAR_WEEKDAYS.forEach(label => {
+    const cell = document.createElement('div');
+    cell.className = 'calendar-weekday';
+    cell.textContent = label;
+    row.appendChild(cell);
+  });
+  row.dataset.rendered = 'true';
+}
+
+function renderCalendarHeatmap() {
+  renderCalendarWeekdays();
+  const monthLabel = document.getElementById('calendarMonthLabel');
+  if (monthLabel) {
+    monthLabel.textContent = formatCalendarMonthLabel(calendarMonthAnchor);
+  }
+  const grid = document.getElementById('calendarGrid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  const cells = buildCalendarMatrix(calendarMonthAnchor);
+  cells.forEach(({ date, isCurrentMonth }) => {
+    const key = formatDateKey(date);
+    const stats = calendarStats[key] || {};
+    const completedCount = ['listening', 'translation', 'pronunciation'].reduce((sum, type) => sum + (stats[type] ? 1 : 0), 0);
+    const cell = document.createElement('div');
+    cell.className = `calendar-cell level-${completedCount}${isCurrentMonth ? '' : ' outside'}`;
+    cell.setAttribute('role', 'gridcell');
+    const activities = [];
+    if (stats.listening) activities.push('聞き取り');
+    if (stats.translation) activities.push('和訳');
+    if (stats.pronunciation) activities.push('発音');
+    const readableDate = expressDateJa(date);
+    const summary = activities.length ? `${activities.join('・')}を実施` : '記録なし';
+    cell.title = `${readableDate}：${summary}`;
+    cell.setAttribute('aria-label', `${readableDate}：${summary}`);
+    const dayEl = document.createElement('span');
+    dayEl.className = 'calendar-day';
+    dayEl.textContent = String(date.getDate());
+    const dots = document.createElement('div');
+    dots.className = 'calendar-dots';
+    ['listening', 'translation', 'pronunciation'].forEach(type => {
+      const dot = document.createElement('span');
+      dot.className = `calendar-dot ${type}${stats[type] ? ' active' : ''}`;
+      dots.appendChild(dot);
+    });
+    cell.appendChild(dayEl);
+    cell.appendChild(dots);
+    grid.appendChild(cell);
+  });
+}
+
 function deleteEvaluationHistoryEntry(type, idx, entryKey) {
   const key = typeof entryKey === 'string' ? entryKey : '';
   if (!key) return loadEvaluationHistory(type, idx);
@@ -705,6 +885,7 @@ function deleteEvaluationHistoryEntry(type, idx, entryKey) {
   const filtered = current.filter(entry => evaluationHistoryEntryKey(entry) !== key);
   saveEvaluationHistory(type, idx, filtered);
   renderEvaluationHistory(type, idx, filtered);
+  rebuildCalendarStats();
   return filtered;
 }
 
@@ -871,6 +1052,7 @@ function appendEvaluationHistory(type, idx, input, feedback, score = null, creat
   const merged = mergeHistoryEntries([baseEntry, ...current]);
   saveEvaluationHistory(type, idx, merged);
   renderEvaluationHistory(type, idx, merged);
+  rebuildCalendarStats();
 }
 
 function getEvaluationHistoryCount(type, idx) {
@@ -1710,6 +1892,7 @@ function setupBlock(idx, sentence) {
 
   if (syncEl) syncEl.textContent = '';
         updatePronunciationQuotaDisplay(idx);
+        rebuildCalendarStats();
       }
     } catch (error) {
       console.warn('fetchRemoteNotes failed', error);
@@ -2656,6 +2839,7 @@ updateAuthBar();
     PAGE_PREFIX = computePagePrefix();
     buildSections();
     updateAllQuotaDisplays();
+    rebuildCalendarStats();
   } catch (e) {
     console.error('initialization failed', e);
   }
@@ -2665,6 +2849,24 @@ const logoutBtn = document.getElementById('logoutBtn');
 if (logoutBtn) {
   logoutBtn.addEventListener('click', async () => {
     await logoutUser();
+  });
+}
+
+const calendarPrevBtn = document.getElementById('calendarPrev');
+if (calendarPrevBtn) {
+  calendarPrevBtn.addEventListener('click', () => {
+    calendarMonthAnchor.setMonth(calendarMonthAnchor.getMonth() - 1);
+    calendarMonthAnchor.setDate(1);
+    renderCalendarHeatmap();
+  });
+}
+
+const calendarNextBtn = document.getElementById('calendarNext');
+if (calendarNextBtn) {
+  calendarNextBtn.addEventListener('click', () => {
+    calendarMonthAnchor.setMonth(calendarMonthAnchor.getMonth() + 1);
+    calendarMonthAnchor.setDate(1);
+    renderCalendarHeatmap();
   });
 }
 
