@@ -16,3 +16,4 @@ __pycache__/
 tools/password_manager.py
 tools/password_manager_gui.py
 tools/run_password_manager_gui.bat
+.vercel
