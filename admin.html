@@ -86,7 +86,6 @@
   'use strict';
 
   const AUTH_STORAGE_KEY = 'ela_auth_session';
-  const PASSWORD_OPTIONAL_PREFIX = 'acg2_';
   const authState = { token: null, userId: null, expiresAt: 0 };
   let usageSnapshot = [];
   let limitsSnapshot = { listening: 0, translation: 0, pronunciation: 0 };
@@ -198,7 +197,6 @@
           <label class="auth-password-field" style="display:flex;flex-direction:column;font-size:0.95rem;color:#374151;gap:4px;">
             パスワード
             <input type="password" name="password" required style="padding:0.6rem;border:1px solid #d1d5db;border-radius:6px;font-size:1rem;" autocomplete="current-password" />
-            <span class="auth-password-hint" style="display:none;font-size:0.8rem;color:#6b7280;">acg2_で始まるIDはパスワード不要です。</span>
           </label>
           <button type="submit" style="margin-top:4px;background:#2563eb;color:#fff;padding:0.65rem;border-radius:6px;font-size:1rem;font-weight:600;border:none;cursor:pointer;">ログイン</button>
           <div id="authStatus" style="min-height:1.1rem;font-size:0.85rem;color:#b91c1c;text-align:center;"></div>
@@ -213,30 +211,19 @@
       document.body.appendChild(overlay);
       const form = overlay.querySelector('#authForm');
       const statusEl = overlay.querySelector('#authStatus');
-      const passwordField = overlay.querySelector('.auth-password-field');
-      const passwordHint = overlay.querySelector('.auth-password-hint');
       const passwordInput = overlay.querySelector('input[name="password"]');
       const userInput = overlay.querySelector('input[name="userId"]');
-
-      form.addEventListener('input', () => {
-        const userId = (userInput.value || '').trim();
-        const passwordOptional = userId.startsWith(PASSWORD_OPTIONAL_PREFIX);
-        passwordField.style.display = passwordOptional ? 'none' : 'flex';
-        passwordInput.required = !passwordOptional;
-        passwordHint.style.display = passwordOptional ? 'block' : 'none';
-      });
 
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
         if (statusEl) statusEl.textContent = '';
         const userId = (userInput.value || '').trim();
-        const passwordOptional = userId.startsWith(PASSWORD_OPTIONAL_PREFIX);
-        const passwordValue = passwordOptional ? '' : (passwordInput.value || '');
+        const passwordValue = passwordInput.value || '';
         if (!userId) {
           statusEl.textContent = 'ユーザーIDを入力してください';
           return;
         }
-        if (!passwordOptional && !passwordValue) {
+        if (!passwordValue) {
           statusEl.textContent = 'このIDにはパスワードが必要です';
           return;
         }
